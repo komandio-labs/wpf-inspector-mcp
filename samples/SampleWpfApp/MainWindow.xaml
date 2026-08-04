@@ -155,6 +155,16 @@
                     <StackPanel>
                         <TextBlock Text="Application Settings" FontSize="20" FontWeight="Bold" Margin="0,0,0,16"/>
                         <ui:TextBox x:Name="ApiKeyInput" AutomationProperties.AutomationId="ApiKeyInput" PlaceholderText="Enter License / Order Key..." Height="38" Margin="0,0,0,16"/>
+                        <ComboBox x:Name="ModeSelector" AutomationProperties.AutomationId="ModeSelector" SelectedIndex="0" Margin="0,0,0,16">
+                            <ComboBoxItem Content="Balanced"/>
+                            <ComboBoxItem Content="Performance"/>
+                        </ComboBox>
+                        <DatePicker x:Name="MaintenanceDate" AutomationProperties.AutomationId="MaintenanceDate" SelectedDate="2026-08-01" Margin="0,0,0,16"/>
+                        <TreeView x:Name="DiagnosticsTree" AutomationProperties.AutomationId="DiagnosticsTree" Margin="0,0,0,16">
+                            <TreeViewItem Header="Diagnostics" AutomationProperties.AutomationId="DiagnosticsRoot" IsExpanded="False">
+                                <TreeViewItem Header="Network"/>
+                            </TreeViewItem>
+                        </TreeView>
                         <CheckBox Content="Enable Advanced Visual Tree Logging" IsChecked="True" Margin="0,0,0,12"/>
                         <CheckBox Content="Hardware Acceleration Enabled" IsChecked="True" Margin="0,0,0,16"/>
                         <ui:Button Content="Save Settings" Appearance="Primary" Height="36" Width="140" HorizontalAlignment="Left"/>

@@ -24,10 +24,14 @@ A Windows WPF-inspection MCP server built with the official C# MCP SDK. It uses 
 | `find_wpf_elements` | Find elements by name, automation ID, type, or rendered text. |
 | `get_wpf_element_details` | Read type, layout, visibility, data-context type, and local bindings. |
 | `get_wpf_bindings` | Read local WPF binding expressions for an element. |
+| `get_wpf_interactive_elements` | List visible enabled controls with locators, bounds, and semantic capabilities. |
+| `interact_with_wpf_element` | Invoke, select, focus, toggle, set text, or set a range value by element identity. |
+| `wait_for_wpf_state` | Wait for an element to exist, become visible/enabled, disappear, or match text. |
+| `run_wpf_workflow` | Execute bounded semantic interact/wait/assert steps with a trace. |
 | `take_inspection_screenshot` | Capture a managed target window as MCP image content. |
 | `click_inspection_window_point` | Click inside a managed target window; requires explicit user confirmation. |
 
-Tree calls are deliberately bounded. A useful AI workflow is: start the session → get roots or search → use returned node IDs for a focused subtree/details/bindings → take a screenshot if needed → end the session.
+Tree calls are deliberately bounded. A useful AI workflow is: start the session → discover interactive elements or search → invoke controls by AutomationId/name/node ID → wait for the expected state → inspect focused details/bindings → take a screenshot only when visual validation is useful → end the session.
 
 ## Build and test
 

@@ -89,8 +89,9 @@ public sealed class InspectorTools
     public static Task<CallToolResult> GetWpfElementDetails(
         [Description("PID returned by start_wpf_inspection.")] int processId,
         [Description("v: or l: node ID returned by a tree call.")] string nodeId,
+        string? expectedRevision = null,
         CancellationToken cancellationToken = default) =>
-        RequestAgentAsync(processId, "element_details", new { nodeId }, cancellationToken);
+        RequestAgentAsync(processId, "element_details", new { nodeId, expectedRevision }, cancellationToken);
 
     [McpServerTool, Description("Returns local WPF binding expressions for a live element identified by a v: or l: node ID.")]
     public static Task<CallToolResult> GetWpfBindings(
@@ -98,6 +99,26 @@ public sealed class InspectorTools
         [Description("v: or l: node ID returned by a tree call.")] string nodeId,
         CancellationToken cancellationToken = default) =>
         RequestAgentAsync(processId, "bindings", new { nodeId }, cancellationToken);
+
+    [McpServerTool, Description("Lists visible, enabled WPF controls that support semantic automation, including stable locators, bounds, and supported actions.")]
+    public static Task<CallToolResult> GetWpfInteractiveElements(int processId, string? query = null, int maxResults = 100, CancellationToken cancellationToken = default) =>
+        RequestAgentAsync(processId, "interactive_elements", new { query, maxResults }, cancellationToken);
+
+    [McpServerTool, Description("Lists managed WPF windows and live presentation roots, including popup roots when WPF exposes them.")]
+    public static Task<CallToolResult> GetWpfSurfaces(int processId, CancellationToken cancellationToken = default) =>
+        RequestAgentAsync(processId, "surfaces", null, cancellationToken);
+
+    [McpServerTool, Description("Performs a semantic action on a managed WPF element. Use nodeId or locator (automationId, name, or query). Supported actions: auto, invoke, select, setText, setRangeValue, toggle, focus. This changes application state; require explicit user confirmation immediately before calling it.")]
+    public static Task<CallToolResult> InteractWithWpfElement(int processId, string action = "auto", string? nodeId = null, string? automationId = null, string? name = null, string? query = null, string? value = null, string? expectedRevision = null, CancellationToken cancellationToken = default) =>
+        RequestAgentAsync(processId, "interact", new { action, nodeId, locator = new { automationId, name, query }, value, expectedRevision }, cancellationToken);
+
+    [McpServerTool, Description("Waits until a managed WPF element matches a state condition without taking screenshots. Conditions: exists, gone, visible, hidden, enabled, disabled, textEquals.")]
+    public static Task<CallToolResult> WaitForWpfState(int processId, string condition, string? nodeId = null, string? automationId = null, string? name = null, string? query = null, string? expectedValue = null, int timeoutMs = 2000, string? expectedRevision = null, CancellationToken cancellationToken = default) =>
+        RequestAgentAsync(processId, "wait_for_state", new { condition, nodeId, locator = new { automationId, name, query }, expectedValue, timeoutMs, expectedRevision }, cancellationToken);
+
+    [McpServerTool, Description("Runs up to 25 semantic WPF interact, wait, and assert steps as one bounded workflow. Each step is an object with kind and the same locator/action fields as the individual tools. This can change application state; require explicit user confirmation immediately before calling it.")]
+    public static Task<CallToolResult> RunWpfWorkflow(int processId, JsonElement[] steps, CancellationToken cancellationToken = default) =>
+        RequestAgentAsync(processId, "run_workflow", new { steps }, cancellationToken);
 
     [McpServerTool, Description("Captures a visible managed-inspection window as MCP image content. This brings the app window to the foreground.")]
     public static CallToolResult TakeInspectionScreenshot(

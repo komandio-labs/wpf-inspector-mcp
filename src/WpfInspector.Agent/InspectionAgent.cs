@@ -7,8 +7,13 @@ using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Automation;
+using System.Windows.Automation.Peers;
+using System.Windows.Automation.Provider;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Data;
+using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Media3D;
 using System.Windows.Threading;
@@ -92,6 +97,11 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
                 "find_elements" => await dispatcher.InvokeAsync(() => FindElements(request.Arguments)),
                 "element_details" => await dispatcher.InvokeAsync(() => DescribeElement(request.Arguments)),
                 "bindings" => await dispatcher.InvokeAsync(() => DescribeBindings(request.Arguments)),
+                "interactive_elements" => await dispatcher.InvokeAsync(() => DescribeInteractiveElements(request.Arguments)),
+                "surfaces" => await dispatcher.InvokeAsync(DescribeSurfaces),
+                "interact" => await dispatcher.InvokeAsync(() => Interact(request.Arguments)),
+                "wait_for_state" => await WaitForStateAsync(request.Arguments),
+                "run_workflow" => await RunWorkflowAsync(request.Arguments),
                 _ => throw new InvalidDataException($"Unknown inspection operation '{request.Operation}'.")
             };
         }
@@ -115,15 +125,17 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
 
     private object DescribeTree(JsonElement? arguments, TreeKind kind)
     {
+        ValidateExpectedRevision(arguments);
         var rootId = GetString(arguments, "rootId");
         var maxDepth = GetInt(arguments, "maxDepth", 3, 0, 8);
         var maxChildren = GetInt(arguments, "maxChildren", 100, 1, 250);
         var roots = ResolveRoots(rootId, kind).Select(root => BuildNode(root.Element, root.Id, kind, maxDepth, maxChildren)).ToArray();
-        return new { tree = kind.ToString().ToLowerInvariant(), maxDepth, maxChildren, roots };
+        return new { uiRevision = GetUiRevision(), tree = kind.ToString().ToLowerInvariant(), maxDepth, maxChildren, roots };
     }
 
     private object DescribeElement(JsonElement? arguments)
     {
+        ValidateExpectedRevision(arguments);
         var nodeId = GetRequiredString(arguments, "nodeId");
         var (element, kind) = ResolveNode(nodeId);
         var frameworkElement = element as FrameworkElement;
@@ -139,12 +151,108 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
                 verticalAlignment = frameworkElement.VerticalAlignment.ToString()
             },
             dataContextType = frameworkElement?.DataContext?.GetType().FullName,
+            bounds = GetBounds(frameworkElement),
+            state = GetState(element),
+            capabilities = GetCapabilities(element),
             localBindings = GetBindings(element).ToArray()
         };
     }
 
+    private object DescribeInteractiveElements(JsonElement? arguments)
+    {
+        ValidateExpectedRevision(arguments);
+        var query = GetString(arguments, "query");
+        var maxResults = GetInt(arguments, "maxResults", 100, 1, 250);
+        var results = EnumerateVisualElements()
+            .Where(item => item.Element is UIElement ui && ui.IsVisible && ui.IsEnabled && GetCapabilities(item.Element).Length > 0)
+            .Where(item => string.IsNullOrWhiteSpace(query) || IsMatch(item.Element, query))
+            .Take(maxResults)
+            .Select(item => new { locator = Locator(item.Element, item.Id), node = Describe(item.Element, item.Id, TreeKind.Visual), bounds = GetBounds(item.Element as FrameworkElement), capabilities = GetCapabilities(item.Element) })
+            .ToArray();
+        return new { uiRevision = GetUiRevision(), elements = results, truncated = results.Length == maxResults };
+    }
+
+    private object DescribeSurfaces() => new
+    {
+        windows = Application.Current.Windows.Cast<Window>().Select((window, index) => new { windowIndex = index, title = window.Title, isVisible = window.IsVisible, isActive = window.IsActive, rootId = $"v:{index}" }).ToArray(),
+        presentationRoots = PresentationSource.CurrentSources.Cast<PresentationSource>().Select(source => source.RootVisual).Where(root => root is not null).Select(root => new { type = root!.GetType().FullName, isPopup = root.GetType().Name.Contains("Popup", StringComparison.OrdinalIgnoreCase) }).ToArray()
+    };
+
+    private object Interact(JsonElement? arguments)
+    {
+        ValidateExpectedRevision(arguments);
+        var (element, id) = ResolveLocator(arguments);
+        var requestedAction = GetString(arguments, "action")?.Trim() ?? "auto";
+        var value = GetString(arguments, "value");
+        var action = requestedAction.Equals("auto", StringComparison.OrdinalIgnoreCase) ? GetCapabilities(element).FirstOrDefault() ?? "" : requestedAction;
+        if (string.IsNullOrEmpty(action)) throw new InvalidOperationException("The target has no supported semantic interaction.");
+        switch (action.ToLowerInvariant())
+        {
+            case "invoke": Invoke(element); break;
+            case "select": Select(element, value); break;
+            case "settext": SetText(element, value ?? string.Empty); break;
+            case "setrangevalue": SetRangeValue(element, value); break;
+            case "toggle": Toggle(element, value); break;
+            case "setdate": if (element is DatePicker datePicker && DateTime.TryParse(value, out var date)) datePicker.SelectedDate = date; else throw new InvalidOperationException("setDate requires a DatePicker and ISO date value."); break;
+            case "focus": if (element is UIElement focusable && focusable.Focusable) focusable.Focus(); else throw new InvalidOperationException("focus requires a focusable UIElement."); break;
+            case "sendkey": SendKey(element, value); break;
+            case "expand": if (element is TreeViewItem treeItem) treeItem.IsExpanded = true; else throw new InvalidOperationException("expand requires a TreeViewItem."); break;
+            case "collapse": if (element is TreeViewItem collapsible) collapsible.IsExpanded = false; else throw new InvalidOperationException("collapse requires a TreeViewItem."); break;
+            default: throw new InvalidOperationException($"Unsupported interaction action '{requestedAction}'.");
+        }
+        return new { uiRevision = GetUiRevision(), nodeId = id, action, strategyUsed = action == "invoke" ? "wpf.routed-command-or-click" : "wpf.direct-control", bounds = GetBounds(element as FrameworkElement), state = GetState(element) };
+    }
+
+    private async Task<object> WaitForStateAsync(JsonElement? arguments)
+    {
+        ValidateExpectedRevision(arguments);
+        var timeoutMs = GetInt(arguments, "timeoutMs", 2_000, 50, 30_000);
+        var condition = GetString(arguments, "condition") ?? "exists";
+        var expected = GetString(arguments, "expectedValue");
+        var deadline = DateTime.UtcNow + TimeSpan.FromMilliseconds(timeoutMs);
+        do
+        {
+            var result = await dispatcher.InvokeAsync(() => TryMatchState(arguments, condition, expected));
+            if (result.Matched) return new { matched = true, condition, result.NodeId, state = result.State };
+            await Task.Delay(75).ConfigureAwait(false);
+        } while (DateTime.UtcNow < deadline);
+        throw new TimeoutException($"Timed out after {timeoutMs}ms waiting for condition '{condition}'.");
+    }
+
+    private async Task<object> RunWorkflowAsync(JsonElement? arguments)
+    {
+        if (arguments is not { ValueKind: JsonValueKind.Object } root || !root.TryGetProperty("steps", out var steps) || steps.ValueKind != JsonValueKind.Array)
+            throw new InvalidDataException("steps must be an array.");
+        if (steps.GetArrayLength() is < 1 or > 25) throw new InvalidDataException("steps must contain between 1 and 25 entries.");
+        var trace = new List<object>();
+        var index = 0;
+        foreach (var step in steps.EnumerateArray())
+        {
+            var started = DateTime.UtcNow;
+            try
+            {
+                var kind = GetString(step, "kind") ?? throw new InvalidDataException("Each workflow step requires kind.");
+                object result;
+                if (kind.Equals("interact", StringComparison.OrdinalIgnoreCase)) result = await dispatcher.InvokeAsync(() => Interact(step));
+                else if (kind.Equals("wait", StringComparison.OrdinalIgnoreCase)) result = await WaitForStateAsync(step);
+                else if (kind.Equals("assert", StringComparison.OrdinalIgnoreCase))
+                {
+                    var check = await dispatcher.InvokeAsync(() => TryMatchState(step, GetString(step, "condition") ?? "exists", GetString(step, "expectedValue")));
+                    if (!check.Matched) throw new InvalidOperationException($"Workflow assertion failed: {GetString(step, "condition") ?? "exists"}.");
+                    result = new { asserted = true, check.NodeId };
+                }
+                else throw new InvalidDataException($"Unknown workflow step kind '{kind}'.");
+                trace.Add(new { index, kind, durationMs = (DateTime.UtcNow - started).TotalMilliseconds, result });
+            }
+            catch (Exception exception) { return new { completed = false, failedStep = index, failureMessage = exception.Message, trace }; }
+            index++;
+        }
+        return new { completed = true, steps = trace };
+    }
+
     private object FindElements(JsonElement? arguments)
     {
+        ValidateExpectedRevision(arguments);
         var query = GetRequiredString(arguments, "query");
         if (query.Length > 256) throw new InvalidDataException("query must be at most 256 characters.");
         var tree = string.Equals(GetString(arguments, "tree"), "logical", StringComparison.OrdinalIgnoreCase) ? TreeKind.Logical : TreeKind.Visual;
@@ -162,7 +270,7 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
             foreach (var (child, index) in GetChildren(element, tree).Select((child, index) => (child, index)))
                 pending.Enqueue((child, $"{id}/{index}"));
         }
-        return new { tree = tree.ToString().ToLowerInvariant(), query, inspectedNodes = inspected, matches, truncated = pending.Count > 0 };
+        return new { uiRevision = GetUiRevision(), tree = tree.ToString().ToLowerInvariant(), query, inspectedNodes = inspected, matches, truncated = pending.Count > 0 };
     }
 
     private object DescribeBindings(JsonElement? arguments)
@@ -220,6 +328,196 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
             GetDisplayText(element)
         }.Any(value => !string.IsNullOrEmpty(value) && value.Contains(query, StringComparison.OrdinalIgnoreCase));
     }
+
+    private IEnumerable<(DependencyObject Element, string Id)> EnumerateVisualElements()
+    {
+        var queue = new Queue<(DependencyObject Element, string Id)>(ResolveRoots(null, TreeKind.Visual));
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            yield return current;
+            foreach (var (child, index) in GetChildren(current.Element, TreeKind.Visual).Select((child, index) => (child, index))) queue.Enqueue((child, $"{current.Id}/{index}"));
+        }
+    }
+
+    private (DependencyObject Element, string Id) ResolveLocator(JsonElement? arguments)
+    {
+        var nodeId = GetString(arguments, "nodeId");
+        if (!string.IsNullOrWhiteSpace(nodeId)) return (ResolveNode(nodeId).Element, nodeId);
+        if (arguments is not { ValueKind: JsonValueKind.Object } root || !root.TryGetProperty("locator", out var locator) || locator.ValueKind != JsonValueKind.Object)
+            throw new InvalidDataException("Provide nodeId or locator.");
+        var automationId = GetString(locator, "automationId");
+        var name = GetString(locator, "name");
+        var query = GetString(locator, "query");
+        var all = EnumerateVisualElements();
+        var matches = !string.IsNullOrWhiteSpace(automationId)
+            ? all.Where(item => item.Element is FrameworkElement fe && string.Equals(AutomationProperties.GetAutomationId(fe), automationId, StringComparison.Ordinal)).ToArray()
+            : !string.IsNullOrWhiteSpace(name)
+                ? all.Where(item => item.Element is FrameworkElement named && string.Equals(named.Name, name, StringComparison.Ordinal)).ToArray()
+                : !string.IsNullOrWhiteSpace(query)
+                    ? all.Where(item => IsMatch(item.Element, query)).ToArray()
+                    : throw new InvalidDataException("locator must contain automationId, name, or query.");
+        if (matches.Length == 0) throw new InvalidDataException("No live WPF element matched the locator.");
+        if (matches.Length > 1) throw new InvalidDataException("The locator is ambiguous. Use automationId, name, or a nodeId. Matches: " + string.Join(", ", matches.Take(5).Select(item => item.Id)));
+        return matches[0];
+    }
+
+    private void ValidateExpectedRevision(JsonElement? arguments)
+    {
+        var expected = GetString(arguments, "expectedRevision");
+        if (!string.IsNullOrWhiteSpace(expected) && !string.Equals(expected, GetUiRevision(), StringComparison.Ordinal))
+            throw new InvalidDataException("The WPF tree changed since the supplied uiRevision. Refresh the relevant tree or locator before acting.");
+    }
+
+    private string GetUiRevision()
+    {
+        var hash = new HashCode();
+        foreach (var item in EnumerateVisualElements().Take(10_000))
+        {
+            hash.Add(item.Element.GetType().FullName, StringComparer.Ordinal);
+            hash.Add((item.Element as FrameworkElement)?.Name, StringComparer.Ordinal);
+            hash.Add(item.Element is UIElement ui && ui.IsVisible);
+            hash.Add(GetChildren(item.Element, TreeKind.Visual).Count());
+        }
+        return hash.ToHashCode().ToString("X8");
+    }
+
+    private static string[] GetCapabilities(DependencyObject element)
+    {
+        var values = new List<string>();
+        if (element is ButtonBase or MenuItem || element is ICommandSource { Command: not null }) values.Add("invoke");
+        if (element is Selector) values.Add("select");
+        if (element is TextBox) values.Add("setText");
+        if (element is DatePicker) values.Add("setDate");
+        if (element is RangeBase) values.Add("setRangeValue");
+        if (element is ToggleButton) values.Add("toggle");
+        if (element is TreeViewItem) { values.Add("expand"); values.Add("collapse"); }
+        if (element is UIElement { Focusable: true }) values.Add("focus");
+        if (element is UIElement) values.Add("sendKey");
+        var peer = element is FrameworkElement framework ? FrameworkElementAutomationPeer.CreatePeerForElement(framework) ?? FrameworkElementAutomationPeer.FromElement(framework) : null;
+        if (peer?.GetPattern(PatternInterface.Invoke) is IInvokeProvider && !values.Contains("invoke")) values.Add("invoke");
+        if (peer?.GetPattern(PatternInterface.Value) is IValueProvider && !values.Contains("setText")) values.Add("setText");
+        if (peer?.GetPattern(PatternInterface.RangeValue) is IRangeValueProvider && !values.Contains("setRangeValue")) values.Add("setRangeValue");
+        if (peer?.GetPattern(PatternInterface.Toggle) is IToggleProvider && !values.Contains("toggle")) values.Add("toggle");
+        return values.ToArray();
+    }
+
+    private static object Locator(DependencyObject element, string nodeId) => new { nodeId, automationId = element is FrameworkElement fe ? AutomationProperties.GetAutomationId(fe) : null, name = (element as FrameworkElement)?.Name };
+
+    private static object? GetBounds(FrameworkElement? element)
+    {
+        if (element is null || !element.IsLoaded || element.ActualWidth <= 0 || element.ActualHeight <= 0) return null;
+        var window = Window.GetWindow(element);
+        if (window is null) return null;
+        var clientTopLeft = element.TranslatePoint(new Point(0, 0), window);
+        var screenTopLeft = element.PointToScreen(new Point(0, 0));
+        var frame = new NativeRect();
+        GetWindowRect(new WindowInteropHelper(window).Handle, out frame);
+        return new
+        {
+            windowClient = new { x = clientTopLeft.X, y = clientTopLeft.Y, width = element.ActualWidth, height = element.ActualHeight },
+            screen = new { x = screenTopLeft.X, y = screenTopLeft.Y, width = element.ActualWidth, height = element.ActualHeight },
+            windowFrame = new { x = screenTopLeft.X - frame.Left, y = screenTopLeft.Y - frame.Top, width = element.ActualWidth, height = element.ActualHeight }
+        };
+    }
+
+    private static object GetState(DependencyObject element) => new
+    {
+        isVisible = element is UIElement ui && ui.IsVisible,
+        isEnabled = element is UIElement enabled && enabled.IsEnabled,
+        isHitTestVisible = element is UIElement hit && hit.IsHitTestVisible,
+        isKeyboardFocused = element is UIElement focused && focused.IsKeyboardFocused,
+        isChecked = element is ToggleButton toggle ? toggle.IsChecked : null,
+        text = element is TextBox textBox ? textBox.Text : GetDisplayText(element),
+        value = element is RangeBase range ? (double?)range.Value : null
+    };
+
+    private static void Invoke(DependencyObject element)
+    {
+        if (element is ButtonBase button) { button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent)); return; }
+        if (element is MenuItem menu) { menu.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent)); return; }
+        if (element is ICommandSource { Command: { } command } source)
+        {
+            if (!command.CanExecute(source.CommandParameter)) throw new InvalidOperationException("The target command cannot execute.");
+            command.Execute(source.CommandParameter); return;
+        }
+        if (GetPeer(element)?.GetPattern(PatternInterface.Invoke) is IInvokeProvider invoke) { invoke.Invoke(); return; }
+        throw new InvalidOperationException("invoke requires a button, menu item, command source, or UI Automation invoke provider.");
+    }
+
+    private static AutomationPeer? GetPeer(DependencyObject element) => element is FrameworkElement framework
+        ? FrameworkElementAutomationPeer.CreatePeerForElement(framework) ?? FrameworkElementAutomationPeer.FromElement(framework)
+        : null;
+
+    private static void SendKey(DependencyObject element, string? value)
+    {
+        if (element is not UIElement ui || !Enum.TryParse<Key>(value, true, out var key)) throw new InvalidOperationException("sendKey requires a UIElement and a valid WPF Key value.");
+        ui.Focus();
+        var source = PresentationSource.FromVisual(ui as Visual) ?? throw new InvalidOperationException("The target is not connected to a presentation source.");
+        ui.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, key) { RoutedEvent = Keyboard.KeyDownEvent });
+        ui.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, key) { RoutedEvent = Keyboard.KeyUpEvent });
+    }
+
+    private static void SetText(DependencyObject element, string value)
+    {
+        if (element is TextBox textBox) { textBox.Text = value; return; }
+        if (GetPeer(element)?.GetPattern(PatternInterface.Value) is IValueProvider provider && !provider.IsReadOnly) { provider.SetValue(value); return; }
+        throw new InvalidOperationException("setText requires a writable TextBox or UI Automation value provider.");
+    }
+
+    private static void SetRangeValue(DependencyObject element, string? value)
+    {
+        if (!double.TryParse(value, out var number)) throw new InvalidOperationException("setRangeValue requires a numeric value.");
+        if (element is RangeBase range) { range.Value = Math.Clamp(number, range.Minimum, range.Maximum); return; }
+        if (GetPeer(element)?.GetPattern(PatternInterface.RangeValue) is IRangeValueProvider provider && !provider.IsReadOnly) { provider.SetValue(number); return; }
+        throw new InvalidOperationException("setRangeValue requires a writable RangeBase or UI Automation range provider.");
+    }
+
+    private static void Toggle(DependencyObject element, string? value)
+    {
+        if (element is ToggleButton toggle) { toggle.IsChecked = value is null ? !(toggle.IsChecked ?? false) : bool.Parse(value); return; }
+        if (GetPeer(element)?.GetPattern(PatternInterface.Toggle) is IToggleProvider provider) { provider.Toggle(); return; }
+        throw new InvalidOperationException("toggle requires a ToggleButton or UI Automation toggle provider.");
+    }
+
+    private static void Select(DependencyObject element, string? value)
+    {
+        if (element is not Selector selector) throw new InvalidOperationException("select requires a Selector.");
+        var item = selector.Items.Cast<object>().FirstOrDefault(candidate => string.Equals(candidate?.ToString(), value, StringComparison.OrdinalIgnoreCase) || candidate is ContentControl { Content: string content } && string.Equals(content, value, StringComparison.OrdinalIgnoreCase));
+        if (item is null) throw new InvalidOperationException($"No selector item matched '{value}'.");
+        selector.SelectedItem = item;
+    }
+
+    private (bool Matched, string? NodeId, object? State) TryMatchState(JsonElement? arguments, string condition, string? expected)
+    {
+        try
+        {
+            var (element, id) = ResolveLocator(arguments);
+            var ui = element as UIElement;
+            var matched = condition.ToLowerInvariant() switch
+            {
+                "exists" => true,
+                "visible" => ui?.IsVisible is true,
+                "hidden" => ui?.IsVisible is false,
+                "enabled" => ui?.IsEnabled is true,
+                "disabled" => ui?.IsEnabled is false,
+                "textequals" => string.Equals(GetDisplayText(element), expected, StringComparison.Ordinal),
+                "checked" => element is ToggleButton toggle && string.Equals(toggle.IsChecked?.ToString(), expected, StringComparison.OrdinalIgnoreCase),
+                "valueequals" => element is RangeBase range && double.TryParse(expected, out var expectedValue) && Math.Abs(range.Value - expectedValue) < 0.001,
+                "focused" => ui?.IsKeyboardFocused is true,
+                "validationhaserror" => element is FrameworkElement framework && Validation.GetHasError(framework),
+                _ => throw new InvalidDataException($"Unknown wait condition '{condition}'.")
+            };
+            return (matched, id, GetState(element));
+        }
+        catch (InvalidDataException) when (condition.Equals("gone", StringComparison.OrdinalIgnoreCase)) { return (true, null, null); }
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool GetWindowRect(nint handle, out NativeRect rectangle);
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct NativeRect { public int Left; public int Top; public int Right; public int Bottom; }
 
     private static IEnumerable<DependencyObject> GetChildren(DependencyObject element, TreeKind kind)
     {
