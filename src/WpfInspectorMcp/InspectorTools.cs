@@ -1,0 +1,183 @@
+using System.Collections.Concurrent;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
+using System.Text.Json;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
+
+namespace WpfInspectorMcp;
+
+[McpServerToolType]
+public sealed class InspectorTools
+{
+    private static readonly ConcurrentDictionary<int, ManagedProcess> Inspections = new();
+
+    [McpServerTool, Description("Starts a WPF executable in a managed AI-inspection session. The application is visibly marked '[AI inspection]' in its title bar and is automatically closed when this MCP server exits. Requires an absolute existing .exe path.")]
+    public static CallToolResult StartWpfInspection(
+        [Description("Required absolute path to the WPF executable.")] string executablePath,
+        [Description("Optional command-line arguments supplied verbatim to the target application.")] string? arguments = null,
+        [Description("Optional absolute working directory. Defaults to the executable's directory.")] string? workingDirectory = null)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(executablePath) || !Path.IsPathFullyQualified(executablePath)) return Error("executablePath must be an absolute path.");
+            var fullPath = Path.GetFullPath(executablePath);
+            if (!fullPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) || !File.Exists(fullPath)) return Error("executablePath must name an existing .exe file.");
+            var directory = string.IsNullOrWhiteSpace(workingDirectory) ? Path.GetDirectoryName(fullPath)! : Path.GetFullPath(workingDirectory);
+            if (!Path.IsPathFullyQualified(directory) || !Directory.Exists(directory)) return Error("workingDirectory must be an existing absolute directory.");
+            var agentPath = Path.Combine(AppContext.BaseDirectory, "WpfInspector.Agent.dll");
+            if (!File.Exists(agentPath)) return Error("The WPF inspection agent is not present beside the MCP server.");
+
+            var pipeName = $"wpf-inspector-{Guid.NewGuid():N}";
+            var secret = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+            var startInfo = new ProcessStartInfo { FileName = fullPath, Arguments = arguments ?? string.Empty, WorkingDirectory = directory, UseShellExecute = false };
+            startInfo.Environment["DOTNET_STARTUP_HOOKS"] = agentPath;
+            startInfo.Environment["WPF_INSPECTOR_PIPE"] = pipeName;
+            startInfo.Environment["WPF_INSPECTOR_SECRET"] = secret;
+            var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Windows did not start the target process.");
+            Inspections[process.Id] = new ManagedProcess(process, pipeName, secret);
+            Log($"Started inspection session for PID {process.Id}; agent pipe {pipeName}.");
+            return Text(JsonSerializer.Serialize(new { processId = process.Id, processName = process.ProcessName, executablePath = fullPath, titlePrefix = "[AI inspection]" }));
+        }
+        catch (Exception exception) { return Error($"Could not start the WPF inspection session: {exception.Message}"); }
+    }
+
+    [McpServerTool, Description("Ends one managed AI-inspection session and closes its WPF application. Only accepts a PID returned by start_wpf_inspection.")]
+    public static CallToolResult EndWpfInspection([Description("PID returned by start_wpf_inspection.")] int processId) =>
+        StopInspection(processId, "Ended");
+
+    [McpServerTool, Description("Lists visible windows for one managed AI-inspection session. The title includes '[AI inspection]' while the session is active.")]
+    public static CallToolResult GetInspectionWindows([Description("PID returned by start_wpf_inspection.")] int processId)
+    {
+        if (!TryGetInspection(processId, out _)) return Error("This MCP server does not manage that inspection process.");
+        return Text(Win32Api.SerializeWindows(Win32Api.GetVisibleWindowsForProcessId(processId)));
+    }
+
+    [McpServerTool, Description("Returns the live WPF window roots for one managed AI-inspection session.")]
+    public static Task<CallToolResult> GetWpfRoots([Description("PID returned by start_wpf_inspection.")] int processId, CancellationToken cancellationToken = default) =>
+        RequestAgentAsync(processId, "roots", null, cancellationToken);
+
+    [McpServerTool, Description("Returns a bounded subtree of the live WPF visual tree. Start with roots or visual_tree without rootId, then follow returned v: node IDs. Increase maxDepth only as needed.")]
+    public static Task<CallToolResult> GetVisualTree(
+        [Description("PID returned by start_wpf_inspection.")] int processId,
+        [Description("Optional v: node ID returned by a prior tree call. Omit to return every WPF window root.")] string? rootId = null,
+        [Description("Maximum descendant depth, from 0 through 8. Defaults to 3.")] int maxDepth = 3,
+        [Description("Maximum direct children per returned node, from 1 through 250. Defaults to 100.")] int maxChildren = 100,
+        CancellationToken cancellationToken = default) =>
+        RequestAgentAsync(processId, "visual_tree", new { rootId, maxDepth, maxChildren }, cancellationToken);
+
+    [McpServerTool, Description("Returns a bounded subtree of the live WPF logical tree. Start with roots or logical_tree without rootId, then follow returned l: node IDs. Increase maxDepth only as needed.")]
+    public static Task<CallToolResult> GetLogicalTree(
+        [Description("PID returned by start_wpf_inspection.")] int processId,
+        [Description("Optional l: node ID returned by a prior tree call. Omit to return every WPF window root.")] string? rootId = null,
+        [Description("Maximum descendant depth, from 0 through 8. Defaults to 3.")] int maxDepth = 3,
+        [Description("Maximum direct children per returned node, from 1 through 250. Defaults to 100.")] int maxChildren = 100,
+        CancellationToken cancellationToken = default) =>
+        RequestAgentAsync(processId, "logical_tree", new { rootId, maxDepth, maxChildren }, cancellationToken);
+
+    [McpServerTool, Description("Finds live WPF elements by name, automation ID, type name, or rendered text. Returns stable v: or l: node IDs for focused tree, detail, and binding calls.")]
+    public static Task<CallToolResult> FindWpfElements(
+        [Description("PID returned by start_wpf_inspection.")] int processId,
+        [Description("Case-insensitive text to match against an element name, automation ID, type, or rendered text.")] string query,
+        [Description("Tree to search: visual (default) or logical.")] string tree = "visual",
+        [Description("Maximum matches returned, from 1 through 100. Defaults to 50.")] int maxResults = 50,
+        CancellationToken cancellationToken = default) =>
+        RequestAgentAsync(processId, "find_elements", new { query, tree, maxResults }, cancellationToken);
+
+    [McpServerTool, Description("Returns properties, layout, data-context type, and local bindings for a live WPF element identified by a v: or l: node ID.")]
+    public static Task<CallToolResult> GetWpfElementDetails(
+        [Description("PID returned by start_wpf_inspection.")] int processId,
+        [Description("v: or l: node ID returned by a tree call.")] string nodeId,
+        CancellationToken cancellationToken = default) =>
+        RequestAgentAsync(processId, "element_details", new { nodeId }, cancellationToken);
+
+    [McpServerTool, Description("Returns local WPF binding expressions for a live element identified by a v: or l: node ID.")]
+    public static Task<CallToolResult> GetWpfBindings(
+        [Description("PID returned by start_wpf_inspection.")] int processId,
+        [Description("v: or l: node ID returned by a tree call.")] string nodeId,
+        CancellationToken cancellationToken = default) =>
+        RequestAgentAsync(processId, "bindings", new { nodeId }, cancellationToken);
+
+    [McpServerTool, Description("Captures a visible managed-inspection window as MCP image content. This brings the app window to the foreground.")]
+    public static CallToolResult TakeInspectionScreenshot(
+        [Description("PID returned by start_wpf_inspection.")] int processId,
+        [Description("Optional case-insensitive substring that must match the window title.")] string? windowTitle = null)
+    {
+        if (!TryGetInspection(processId, out _)) return Error("This MCP server does not manage that inspection process.");
+        if (!Win32Api.IsValidWindowTitleFilter(windowTitle)) return Error("windowTitle must be at most 256 characters.");
+        if (!Win32Api.TryFindVisibleWindow(processId, windowTitle, out var window, out var error)) return Error(error);
+        try
+        {
+            var png = Win32Api.CaptureWindowByHandle((nint)window.Handle);
+            return new CallToolResult
+            {
+                Content = [new TextContentBlock { Text = $"Captured '{window.Title}' (PID {window.ProcessId}, {window.Width}x{window.Height})." }, ImageContentBlock.FromBytes(png, "image/png")]
+            };
+        }
+        catch (Exception exception) { return Error($"Could not capture the selected window: {exception.Message}"); }
+    }
+
+    [McpServerTool, Description("Clicks a point inside a visible managed-inspection window. This moves the real mouse and can change application state; require explicit user confirmation immediately before calling it.")]
+    public static CallToolResult ClickInspectionWindowPoint(
+        [Description("PID returned by start_wpf_inspection.")] int processId,
+        [Description("Horizontal pixel offset from the window's top-left; must be inside the window.")] int x,
+        [Description("Vertical pixel offset from the window's top-left; must be inside the window.")] int y,
+        [Description("Optional case-insensitive substring that must match the window title.")] string? windowTitle = null)
+    {
+        if (!TryGetInspection(processId, out _)) return Error("This MCP server does not manage that inspection process.");
+        if (!Win32Api.IsValidWindowTitleFilter(windowTitle)) return Error("windowTitle must be at most 256 characters.");
+        if (!Win32Api.TryFindVisibleWindow(processId, windowTitle, out var window, out var error)) return Error(error);
+        if (x < 0 || y < 0 || x >= window.Width || y >= window.Height) return Error($"The point ({x}, {y}) is outside the selected window ({window.Width}x{window.Height}).");
+        return Text(Win32Api.ClickWindowPoint((nint)window.Handle, window, x, y));
+    }
+
+    internal static void EndAllInspections()
+    {
+        foreach (var processId in Inspections.Keys) StopInspection(processId, "Automatically ended");
+    }
+
+    private static async Task<CallToolResult> RequestAgentAsync(int processId, string operation, object? arguments, CancellationToken cancellationToken)
+    {
+        if (!TryGetInspection(processId, out var inspection)) return Error("This MCP server does not manage that inspection process.");
+        try
+        {
+            var response = await InspectionAgentClient.RequestAsync(inspection.PipeName, inspection.Secret, operation, arguments, cancellationToken);
+            using var document = JsonDocument.Parse(response);
+            if (document.RootElement.TryGetProperty("error", out var error)) return Error(error.GetString() ?? "The inspection agent returned an unknown error.");
+            return Text(response);
+        }
+        catch (Exception exception) { return Error($"Could not contact the WPF inspection agent: {exception.Message}"); }
+    }
+
+    private static bool TryGetInspection(int processId, out ManagedProcess inspection)
+    {
+        if (!Inspections.TryGetValue(processId, out inspection!)) return false;
+        try
+        {
+            if (!inspection.Process.HasExited) return true;
+        }
+        catch { }
+        Inspections.TryRemove(processId, out _);
+        inspection.Process.Dispose();
+        return false;
+    }
+
+    private static CallToolResult StopInspection(int processId, string action)
+    {
+        if (!Inspections.TryRemove(processId, out var inspection)) return Error("This MCP server does not manage that inspection process.");
+        try
+        {
+            if (!inspection.Process.HasExited) inspection.Process.Kill(entireProcessTree: true);
+            Log($"{action} inspection session for PID {processId}.");
+            return Text($"{action} managed inspection process {processId}.");
+        }
+        catch (Exception exception) { return Error($"Could not end managed inspection process {processId}: {exception.Message}"); }
+        finally { inspection.Process.Dispose(); }
+    }
+
+    private static void Log(string message) => Console.Error.WriteLine($"[{DateTimeOffset.UtcNow:O}] WpfInspectorMcp {message}");
+    private static CallToolResult Text(string text) => new() { Content = [new TextContentBlock { Text = text }] };
+    private static CallToolResult Error(string message) => new() { IsError = true, Content = [new TextContentBlock { Text = message }] };
+    private sealed record ManagedProcess(Process Process, string PipeName, string Secret);
+}

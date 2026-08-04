@@ -1,0 +1,223 @@
+<ui:FluentWindow x:Class="SampleWpfApp.MainWindow"
+                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                  Title="Sample Complex WPF-UI Application"
+                  Height="720" Width="1100"
+                  WindowStartupLocation="CenterScreen"
+                  ExtendsContentIntoTitleBar="True"
+                  WindowBackdropType="Mica"
+                  Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Custom WPF-UI TitleBar -->
+        <ui:TitleBar Grid.Row="0" Title="Sample Complex WPF-UI Application" Icon="{ui:SymbolIcon AppFolder24}"/>
+
+        <!-- Main Canvas Grid with Navigation & Page Content -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="240"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Navigation Bar -->
+            <Border Grid.Column="0" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="0,0,1,0" Padding="12">
+                <StackPanel>
+                    <TextBlock Text="WPF INSPECTOR DEMO" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource SystemAccentColorBrush}" Margin="8,0,0,16"/>
+
+                    <ui:Button x:Name="NavDashboardBtn" AutomationProperties.AutomationId="NavDashboardBtn" Content="📊 Dashboard &amp; Analytics" Appearance="Primary" Height="38" HorizontalAlignment="Stretch" Margin="0,0,0,8" Click="NavDashboard_Click"/>
+                    <ui:Button x:Name="NavCatalogBtn" AutomationProperties.AutomationId="NavCatalogBtn" Content="📦 Adapter Catalog" Appearance="Secondary" Height="38" HorizontalAlignment="Stretch" Margin="0,0,0,8" Click="NavCatalog_Click"/>
+                    <ui:Button x:Name="NavSettingsBtn" AutomationProperties.AutomationId="NavSettingsBtn" Content="⚙️ Settings &amp; Configuration" Appearance="Secondary" Height="38" HorizontalAlignment="Stretch" Margin="0,0,0,16" Click="NavSettings_Click"/>
+
+                    <Separator Margin="0,0,0,16"/>
+
+                    <TextBlock Text="MODAL CONTROLS" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="8,0,0,8"/>
+                    <ui:Button x:Name="OpenModalBtn" AutomationProperties.AutomationId="OpenModalBtn" Content="⚡ Open Test Modal" Appearance="Secondary" Height="36" HorizontalAlignment="Stretch" Margin="0,0,0,8" Click="OpenModal_Click"/>
+                    <ui:Button x:Name="OpenDrawerBtn" AutomationProperties.AutomationId="OpenDrawerBtn" Content="📜 Open History Drawer" Appearance="Secondary" Height="36" HorizontalAlignment="Stretch" Click="OpenDrawer_Click"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Content Area View Hosts -->
+            <Border Grid.Column="1" Padding="24">
+                <Grid>
+                    <!-- View 1: Dashboard View -->
+                    <Grid x:Name="DashboardView" Visibility="Visible">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Text="System Analytics &amp; Telemetry" FontSize="20" FontWeight="Bold" Margin="0,0,0,16"/>
+
+                        <Grid Grid.Row="1" Margin="0,0,0,20">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="16"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="16"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <ui:Card Grid.Column="0">
+                                <Border Padding="16">
+                                    <StackPanel>
+                                        <TextBlock Text="Active Processes" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                        <TextBlock Text="12 Active" FontSize="22" FontWeight="Bold" Margin="0,4,0,0"/>
+                                        <ui:ProgressRing Progress="75" IsIndeterminate="False" Height="40" Width="40" Margin="0,12,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                            </ui:Card>
+
+                            <ui:Card Grid.Column="2">
+                                <Border Padding="16">
+                                    <StackPanel>
+                                        <TextBlock Text="Memory Load" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                        <TextBlock Text="4.2 GB / 16 GB" FontSize="22" FontWeight="Bold" Margin="0,4,0,0"/>
+                                        <ProgressBar Value="35" Height="8" Margin="0,16,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                            </ui:Card>
+
+                            <ui:Card Grid.Column="4">
+                                <Border Padding="16">
+                                    <StackPanel>
+                                        <TextBlock Text="Adapter Mode" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                        <TextBlock Text="PRO TIER ACTIVE" FontSize="18" FontWeight="Bold" Foreground="#34D399" Margin="0,4,0,0"/>
+                                        <ui:Button Content="Toggle Override" Appearance="Secondary" Height="30" Margin="0,12,0,0" Click="ToggleOverride_Click"/>
+                                    </StackPanel>
+                                </Border>
+                            </ui:Card>
+                        </Grid>
+
+                        <!-- Interactive Control Panel -->
+                        <ui:Card Grid.Row="2">
+                            <Border Padding="20">
+                                <StackPanel>
+                                    <TextBlock Text="Live Input Validation Controls" FontSize="14" FontWeight="Bold" Margin="0,0,0,12"/>
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                        <TextBlock Text="Enable High Performance Mode:" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                                        <ui:ToggleSwitch x:Name="PerfToggle" AutomationProperties.AutomationId="PerfToggle" IsChecked="True"/>
+                                    </StackPanel>
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                        <TextBlock Text="Simulation Speed (Hz):" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                                        <Slider x:Name="SpeedSlider" AutomationProperties.AutomationId="SpeedSlider" Minimum="10" Maximum="240" Value="60" Width="200" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="SpeedReadout" AutomationProperties.AutomationId="SpeedReadout" Text="{Binding ElementName=SpeedSlider, Path=Value, StringFormat={}{0:F0} Hz}" VerticalAlignment="Center" Margin="12,0,0,0" FontWeight="Bold"/>
+                                    </StackPanel>
+
+                                    <TextBlock x:Name="StatusLabel" AutomationProperties.AutomationId="StatusLabel" Text="Status: Operational" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SystemAccentColorBrush}"/>
+                                </StackPanel>
+                            </Border>
+                        </ui:Card>
+                    </Grid>
+
+                <!-- View 2: Adapter Catalog View -->
+                <Grid x:Name="CatalogView" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="Adapter Package Catalog" FontSize="20" FontWeight="Bold" Margin="0,0,0,16"/>
+
+                    <ListView Grid.Row="1" x:Name="CatalogListView" AutomationProperties.AutomationId="CatalogListView">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <ui:Card Margin="0,0,0,8" Padding="14">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="Bold"/>
+                                            <TextBlock Text="{Binding Description}" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,2,0,0"/>
+                                        </StackPanel>
+
+                                        <ui:Button Grid.Column="1" Content="Install Package" Appearance="Primary" Height="32"/>
+                                    </Grid>
+                                </ui:Card>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+
+                <!-- View 3: Settings View -->
+                <Grid x:Name="SettingsView" Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="Application Settings" FontSize="20" FontWeight="Bold" Margin="0,0,0,16"/>
+                        <ui:TextBox x:Name="ApiKeyInput" AutomationProperties.AutomationId="ApiKeyInput" PlaceholderText="Enter License / Order Key..." Height="38" Margin="0,0,0,16"/>
+                        <CheckBox Content="Enable Advanced Visual Tree Logging" IsChecked="True" Margin="0,0,0,12"/>
+                        <CheckBox Content="Hardware Acceleration Enabled" IsChecked="True" Margin="0,0,0,16"/>
+                        <ui:Button Content="Save Settings" Appearance="Primary" Height="36" Width="140" HorizontalAlignment="Left"/>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+
+        <!-- Test Modal Window Overlay -->
+        <Grid x:Name="TestModalOverlay"
+              Grid.RowSpan="2"
+              Panel.ZIndex="200"
+              Visibility="Collapsed">
+            <Border Background="#B0000000" MouseDown="CloseModal_Click"/>
+
+            <Border Margin="30" Width="500" Height="280" CornerRadius="16" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1" Background="{DynamicResource SolidBackgroundFillColorBaseBrush}" Padding="24" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="Sample Modal Dialog" FontSize="18" FontWeight="Bold" Margin="0,0,0,12"/>
+                    <TextBlock Grid.Row="1" Text="This modal tests modal rendering, Z-index overlays, and input events across visual layers." TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <ui:Button Content="Cancel" Appearance="Secondary" Height="34" Margin="0,0,8,0" Click="CloseModal_Click"/>
+                        <ui:Button x:Name="ConfirmModalBtn" AutomationProperties.AutomationId="ConfirmModalBtn" Content="Confirm Action" Appearance="Primary" Height="34" Click="ConfirmModal_Click"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- History Drawer Overlay -->
+        <Grid x:Name="TestDrawerOverlay"
+              Grid.RowSpan="2"
+              Panel.ZIndex="210"
+              Visibility="Collapsed">
+            <Border Background="#80000000" MouseDown="CloseDrawer_Click"/>
+
+            <Border Width="380" HorizontalAlignment="Right" VerticalAlignment="Stretch" Background="{DynamicResource SolidBackgroundFillColorBaseBrush}" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1,0,0,0" Padding="20">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="Execution Log History" FontSize="16" FontWeight="Bold" Margin="0,0,0,16"/>
+
+                    <ScrollViewer Grid.Row="1">
+                        <StackPanel>
+                            <TextBlock Text="• [15:28:01] Process Attached (PID 12480)" Margin="0,0,0,8" FontSize="12"/>
+                            <TextBlock Text="• [15:28:05] Navigation Click: Catalog View" Margin="0,0,0,8" FontSize="12"/>
+                            <TextBlock Text="• [15:28:10] Screenshot Captured: 1100x720" Margin="0,0,0,8" FontSize="12"/>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <ui:Button Grid.Row="2" Content="Close Drawer" Appearance="Secondary" Height="34" HorizontalAlignment="Right" Click="CloseDrawer_Click"/>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</ui:FluentWindow>
