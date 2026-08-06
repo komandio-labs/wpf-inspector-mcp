@@ -2,8 +2,6 @@
 
 WPF Inspector MCP gives AI coding agents an in-process view of local WPF applications through the [Model Context Protocol](https://modelcontextprotocol.io/). It inspects the real WPF visual and logical trees, bindings, presentation surfaces, controls, and screenshots without adding a reference to the target application.
 
-![Sample WPF dashboard under inspection](docs/assets/sample-dashboard.png)
-
 ## Why this exists
 
 Accessibility-only tools see the UIA tree. This server injects an inspection agent into a running WPF process, so it can inspect the real WPF tree, dependency bindings, data-context type, and popup surfaces.
