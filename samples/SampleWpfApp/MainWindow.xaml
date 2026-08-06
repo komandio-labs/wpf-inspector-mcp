@@ -128,10 +128,17 @@
 
                     <TextBlock Grid.Row="0" Text="Adapter Package Catalog" FontSize="20" FontWeight="Bold" Margin="0,0,0,16"/>
 
-                    <ListView Grid.Row="1" x:Name="CatalogListView" AutomationProperties.AutomationId="CatalogListView">
+                    <ListView Grid.Row="1" x:Name="CatalogListView" AutomationProperties.AutomationId="CatalogListView" Background="Transparent" BorderThickness="0">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="Padding" Value="0"/>
+                            </Style>
+                        </ListView.ItemContainerStyle>
                         <ListView.ItemTemplate>
                             <DataTemplate>
-                                <ui:Card Margin="0,0,0,8" Padding="14">
+                                <ui:Card Margin="0,0,0,8" Padding="14" Background="#FF2B2B2B" BorderBrush="#FF3E3E3E">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
@@ -139,8 +146,8 @@
                                         </Grid.ColumnDefinitions>
 
                                         <StackPanel>
-                                            <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="Bold"/>
-                                            <TextBlock Text="{Binding Description}" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,2,0,0"/>
+                                            <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="Bold" Foreground="#FFF5F5F5"/>
+                                            <TextBlock Text="{Binding Description}" FontSize="12" Foreground="#FFBDBDBD" Margin="0,2,0,0"/>
                                         </StackPanel>
 
                                         <ui:Button Grid.Column="1" Content="Install Package" Appearance="Primary" Height="32"/>

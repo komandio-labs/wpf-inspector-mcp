@@ -249,7 +249,9 @@ public sealed class IntegrationTests
                 [
                   { "kind": "interact", "action": "invoke", "locator": { "automationId": "NavDashboardBtn" } },
                   { "kind": "wait", "condition": "visible", "locator": { "query": "System Analytics & Telemetry" }, "timeoutMs": 3000 },
-                  { "kind": "assert", "condition": "visible", "locator": { "query": "System Analytics & Telemetry" } }
+                  { "kind": "assert", "condition": "visible", "locator": { "query": "System Analytics & Telemetry" } },
+                  { "kind": "interact", "action": "invoke", "locator": { "automationId": "NavCatalogBtn" } },
+                  { "kind": "wait", "condition": "visible", "locator": { "query": "Adapter Package Catalog" }, "timeoutMs": 3000 }
                 ]
                 """)!;
             var workflow = await client.CallToolAsync("run_wpf_workflow", new Dictionary<string, object?> { ["processId"] = processId, ["steps"] = workflowSteps });
