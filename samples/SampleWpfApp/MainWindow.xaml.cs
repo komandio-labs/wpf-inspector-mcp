@@ -6,16 +6,16 @@ using Wpf.Ui.Controls;
 
 namespace SampleWpfApp;
 
-public record CollectionItem(string Title, string Description);
+public record CollectionItem(string Title, string Description, string ActionId);
 
 public partial class MainWindow : FluentWindow
 {
     public ObservableCollection<CollectionItem> CollectionItems { get; } = new()
     {
-        new("Quarterly Planning", "A shared roadmap and milestone review"),
-        new("Research Notes", "Collected findings for the current initiative"),
-        new("Design Review", "Open decisions and annotated mockups"),
-        new("Team Retrospective", "Actions and observations from the last cycle")
+        new("Quarterly Planning", "A shared roadmap and milestone review", "OpenQuarterlyPlanning"),
+        new("Research Notes", "Collected findings for the current initiative", "OpenResearchNotes"),
+        new("Design Review", "Open decisions and annotated mockups", "OpenDesignReview"),
+        new("Team Retrospective", "Actions and observations from the last cycle", "OpenTeamRetrospective")
     };
 
     public string RequiredValue { get; set; } = "Required value";
@@ -25,6 +25,7 @@ public partial class MainWindow : FluentWindow
         InitializeComponent();
         DataContext = this;
         CollectionListView.ItemsSource = CollectionItems;
+        SetActiveNavigation(NavDashboardBtn);
     }
 
     private void NavDashboard_Click(object sender, RoutedEventArgs e)
@@ -32,6 +33,7 @@ public partial class MainWindow : FluentWindow
         DashboardView.Visibility = Visibility.Visible;
         CollectionView.Visibility = Visibility.Collapsed;
         SettingsView.Visibility = Visibility.Collapsed;
+        SetActiveNavigation(NavDashboardBtn);
         StatusLabel.Text = "Status: Navigated to Dashboard";
     }
 
@@ -40,6 +42,7 @@ public partial class MainWindow : FluentWindow
         DashboardView.Visibility = Visibility.Collapsed;
         CollectionView.Visibility = Visibility.Visible;
         SettingsView.Visibility = Visibility.Collapsed;
+        SetActiveNavigation(NavCollectionBtn);
         StatusLabel.Text = "Status: Navigated to Collection";
     }
 
@@ -48,6 +51,7 @@ public partial class MainWindow : FluentWindow
         DashboardView.Visibility = Visibility.Collapsed;
         CollectionView.Visibility = Visibility.Collapsed;
         SettingsView.Visibility = Visibility.Visible;
+        SetActiveNavigation(NavSettingsBtn);
         StatusLabel.Text = "Status: Navigated to Settings";
     }
 
@@ -55,6 +59,14 @@ public partial class MainWindow : FluentWindow
     {
         StatusLabel.Text = "Status: Highlight Toggled!";
     }
+
+    private void OpenRecord_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Wpf.Ui.Controls.Button { DataContext: CollectionItem item })
+            StatusLabel.Text = $"Status: Opened {item.Title}";
+    }
+
+    private void SaveSettings_Click(object sender, RoutedEventArgs e) => StatusLabel.Text = "Status: Settings Saved";
 
     private void OpenModal_Click(object sender, RoutedEventArgs e)
     {
@@ -97,6 +109,13 @@ public partial class MainWindow : FluentWindow
 
     private void OpenPopup_Click(object sender, RoutedEventArgs e) => InspectorPopup.IsOpen = true;
     private void ClosePopup_Click(object sender, RoutedEventArgs e) => InspectorPopup.IsOpen = false;
+
+    private void SetActiveNavigation(Wpf.Ui.Controls.Button active)
+    {
+        NavDashboardBtn.Appearance = ReferenceEquals(active, NavDashboardBtn) ? ControlAppearance.Primary : ControlAppearance.Secondary;
+        NavCollectionBtn.Appearance = ReferenceEquals(active, NavCollectionBtn) ? ControlAppearance.Primary : ControlAppearance.Secondary;
+        NavSettingsBtn.Appearance = ReferenceEquals(active, NavSettingsBtn) ? ControlAppearance.Primary : ControlAppearance.Secondary;
+    }
 }
 
 public sealed class RequiredTextRule : ValidationRule

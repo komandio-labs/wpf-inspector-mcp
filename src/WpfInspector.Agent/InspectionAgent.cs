@@ -328,6 +328,7 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
         type = element.GetType().FullName,
         name = element is FrameworkElement frameworkElement ? frameworkElement.Name : null,
         automationId = element is FrameworkElement fe ? AutomationProperties.GetAutomationId(fe) : null,
+        appearance = element.GetType().GetProperty("Appearance")?.GetValue(element)?.ToString(),
         visibility = element is UIElement uiElement ? uiElement.Visibility.ToString() : null,
         text = GetDisplayText(element),
         visualChildren = GetChildren(element, TreeKind.Visual).Count(),
@@ -512,7 +513,8 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
         var item = selector.Items.Cast<object>().FirstOrDefault(candidate =>
             string.Equals(candidate?.ToString(), value, StringComparison.OrdinalIgnoreCase) ||
             candidate is ContentControl { Content: string content } && string.Equals(content, value, StringComparison.OrdinalIgnoreCase) ||
-            candidate is HeaderedContentControl { Header: string header } && string.Equals(header, value, StringComparison.OrdinalIgnoreCase));
+            candidate is HeaderedContentControl { Header: string header } && string.Equals(header, value, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(candidate?.GetType().GetProperty("Title")?.GetValue(candidate)?.ToString(), value, StringComparison.OrdinalIgnoreCase));
         if (item is null) throw new InvalidOperationException($"No selector item matched '{value}'.");
         selector.SelectedItem = item;
     }

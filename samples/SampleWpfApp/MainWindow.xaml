@@ -17,7 +17,7 @@
         </Grid.RowDefinitions>
 
         <!-- Custom WPF-UI TitleBar -->
-        <ui:TitleBar Grid.Row="0" Title="Sample Complex WPF-UI Application" Icon="{ui:SymbolIcon AppFolder24}"/>
+        <ui:TitleBar x:Name="SampleTitleBar" AutomationProperties.AutomationId="SampleTitleBar" Grid.Row="0" Title="Sample Complex WPF-UI Application" Icon="{ui:SymbolIcon AppFolder24}"/>
 
         <!-- Main Canvas Grid with Navigation & Page Content -->
         <Grid Grid.Row="1">
@@ -70,7 +70,7 @@
                                     <StackPanel>
                                         <TextBlock Text="Active Processes" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                                         <TextBlock Text="12 Active" FontSize="22" FontWeight="Bold" Margin="0,4,0,0"/>
-                                        <ui:ProgressRing Progress="75" IsIndeterminate="False" Height="40" Width="40" Margin="0,12,0,0"/>
+                                        <ui:ProgressRing x:Name="ActiveProgressRing" AutomationProperties.AutomationId="ActiveProgressRing" Progress="75" IsIndeterminate="False" Height="40" Width="40" Margin="0,12,0,0"/>
                                     </StackPanel>
                                 </Border>
                             </ui:Card>
@@ -80,7 +80,7 @@
                                     <StackPanel>
                                         <TextBlock Text="Memory Load" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                                         <TextBlock Text="4.2 GB / 16 GB" FontSize="22" FontWeight="Bold" Margin="0,4,0,0"/>
-                                        <ProgressBar Value="35" Height="8" Margin="0,16,0,0"/>
+                                        <ProgressBar x:Name="MemoryProgress" AutomationProperties.AutomationId="MemoryProgress" Minimum="0" Maximum="100" Value="35" Height="8" Margin="0,16,0,0"/>
                                     </StackPanel>
                                 </Border>
                             </ui:Card>
@@ -90,7 +90,7 @@
                                     <StackPanel>
                                         <TextBlock Text="Workspace Mode" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                                         <TextBlock Text="FOCUS MODE ACTIVE" FontSize="18" FontWeight="Bold" Foreground="#34D399" Margin="0,4,0,0"/>
-                                        <ui:Button Content="Toggle Highlight" Appearance="Secondary" Height="30" Margin="0,12,0,0" Click="ToggleOverride_Click"/>
+                                        <ui:Button x:Name="ToggleHighlightButton" AutomationProperties.AutomationId="ToggleHighlightButton" Content="Toggle Highlight" Appearance="Secondary" Height="30" Margin="0,12,0,0" Click="ToggleOverride_Click"/>
                                     </StackPanel>
                                 </Border>
                             </ui:Card>
@@ -150,7 +150,7 @@
                                             <TextBlock Text="{Binding Description}" FontSize="12" Foreground="#FFBDBDBD" Margin="0,2,0,0"/>
                                         </StackPanel>
 
-                                        <ui:Button Grid.Column="1" Content="Open Record" Appearance="Primary" Height="32"/>
+                                        <ui:Button Grid.Column="1" AutomationProperties.AutomationId="{Binding ActionId}" Content="Open Record" Appearance="Primary" Height="32" Click="OpenRecord_Click"/>
                                     </Grid>
                                 </ui:Card>
                             </DataTemplate>
@@ -174,9 +174,9 @@
                                 <TreeViewItem Header="Network"/>
                             </TreeViewItem>
                         </TreeView>
-                        <CheckBox Content="Enable Advanced Visual Tree Logging" IsChecked="True" Margin="0,0,0,12"/>
-                        <CheckBox Content="Hardware Acceleration Enabled" IsChecked="True" Margin="0,0,0,16"/>
-                        <ui:Button Content="Save Settings" Appearance="Primary" Height="36" Width="140" HorizontalAlignment="Left"/>
+                        <CheckBox x:Name="VisualLoggingCheck" AutomationProperties.AutomationId="VisualLoggingCheck" Content="Enable Advanced Visual Tree Logging" IsChecked="True" Margin="0,0,0,12"/>
+                        <CheckBox x:Name="HardwareAccelerationCheck" AutomationProperties.AutomationId="HardwareAccelerationCheck" Content="Hardware Acceleration Enabled" IsChecked="True" Margin="0,0,0,16"/>
+                        <ui:Button x:Name="SaveSettingsButton" AutomationProperties.AutomationId="SaveSettingsButton" Content="Save Settings" Appearance="Primary" Height="36" Width="140" HorizontalAlignment="Left" Click="SaveSettings_Click"/>
                         <Separator Margin="0,20,0,16"/>
                         <TextBlock Text="Inspector Control Laboratory" FontSize="16" FontWeight="Bold" Margin="0,0,0,12"/>
                         <TextBox x:Name="NameInput" AutomationProperties.AutomationId="NameInput" Text="Ada Lovelace" Margin="0,0,0,8"/>
@@ -227,7 +227,7 @@
                     <TextBlock Grid.Row="1" Text="This modal tests modal rendering, Z-index overlays, and input events across visual layers." TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
 
                     <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
-                        <ui:Button Content="Cancel" Appearance="Secondary" Height="34" Margin="0,0,8,0" Click="CloseModal_Click"/>
+                        <ui:Button x:Name="CancelModalButton" AutomationProperties.AutomationId="CancelModalButton" Content="Cancel" Appearance="Secondary" Height="34" Margin="0,0,8,0" Click="CloseModal_Click"/>
                         <ui:Button x:Name="ConfirmModalBtn" AutomationProperties.AutomationId="ConfirmModalBtn" Content="Confirm Action" Appearance="Primary" Height="34" Click="ConfirmModal_Click"/>
                     </StackPanel>
                 </Grid>
