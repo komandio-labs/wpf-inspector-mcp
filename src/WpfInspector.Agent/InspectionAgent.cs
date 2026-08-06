@@ -460,14 +460,17 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
 
     private static void Invoke(DependencyObject element)
     {
-        if (element is ButtonBase button) { button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent)); return; }
-        if (element is MenuItem menu) { menu.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent)); return; }
         if (element is ICommandSource { Command: { } command } source)
         {
             if (!command.CanExecute(source.CommandParameter)) throw new InvalidOperationException("The target command cannot execute.");
             command.Execute(source.CommandParameter); return;
         }
         if (GetPeer(element)?.GetPattern(PatternInterface.Invoke) is IInvokeProvider invoke) { invoke.Invoke(); return; }
+        // RaiseEvent is only a compatibility fallback: it bypasses ButtonBase.OnClick,
+        // so it cannot be the primary path for controls whose command is where their
+        // behavior lives.
+        if (element is ButtonBase button) { button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent)); return; }
+        if (element is MenuItem menu) { menu.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent)); return; }
         throw new InvalidOperationException("invoke requires a button, menu item, command source, or UI Automation invoke provider.");
     }
 
