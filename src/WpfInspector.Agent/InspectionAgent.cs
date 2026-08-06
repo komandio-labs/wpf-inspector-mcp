@@ -34,6 +34,18 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
         _ = Task.Run(ServeAsync);
     }
 
+    internal void Stop()
+    {
+        stop.Cancel();
+        dispatcher.BeginInvoke(() =>
+        {
+            windowMarkerTimer?.Stop();
+            foreach (var (window, title) in originalTitles.ToArray())
+                if (!window.Dispatcher.HasShutdownStarted) window.Title = title;
+            originalTitles.Clear();
+        });
+    }
+
     private void StartWindowMarkers()
     {
         MarkWindows();
@@ -102,6 +114,7 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
                 "interact" => await dispatcher.InvokeAsync(() => Interact(request.Arguments)),
                 "wait_for_state" => await WaitForStateAsync(request.Arguments),
                 "run_workflow" => await RunWorkflowAsync(request.Arguments),
+                "stop" => await dispatcher.InvokeAsync(() => { Stop(); return new { stopped = true }; }),
                 _ => throw new InvalidDataException($"Unknown inspection operation '{request.Operation}'.")
             };
         }
@@ -120,7 +133,11 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
             visualRootId = $"v:{index}",
             logicalRootId = $"l:{index}",
             element = Describe(window, $"v:{index}", TreeKind.Visual)
-        }).ToArray()
+        }).ToArray(),
+        popupRoots = GetVisualRoots()
+            .Where(root => root.Id.StartsWith("p:", StringComparison.Ordinal))
+            .Select(root => new { rootId = root.Id, element = Describe(root.Element, root.Id, TreeKind.Visual) })
+            .ToArray()
     };
 
     private object DescribeTree(JsonElement? arguments, TreeKind kind)
@@ -196,8 +213,16 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
             case "setdate": if (element is DatePicker datePicker && DateTime.TryParse(value, out var date)) datePicker.SelectedDate = date; else throw new InvalidOperationException("setDate requires a DatePicker and ISO date value."); break;
             case "focus": if (element is UIElement focusable && focusable.Focusable) focusable.Focus(); else throw new InvalidOperationException("focus requires a focusable UIElement."); break;
             case "sendkey": SendKey(element, value); break;
-            case "expand": if (element is TreeViewItem treeItem) treeItem.IsExpanded = true; else throw new InvalidOperationException("expand requires a TreeViewItem."); break;
-            case "collapse": if (element is TreeViewItem collapsible) collapsible.IsExpanded = false; else throw new InvalidOperationException("collapse requires a TreeViewItem."); break;
+            case "expand":
+                if (element is TreeViewItem treeItem) treeItem.IsExpanded = true;
+                else if (element is Expander expander) expander.IsExpanded = true;
+                else throw new InvalidOperationException("expand requires a TreeViewItem or Expander.");
+                break;
+            case "collapse":
+                if (element is TreeViewItem collapsible) collapsible.IsExpanded = false;
+                else if (element is Expander expander) expander.IsExpanded = false;
+                else throw new InvalidOperationException("collapse requires a TreeViewItem or Expander.");
+                break;
             default: throw new InvalidOperationException($"Unsupported interaction action '{requestedAction}'.");
         }
         return new { uiRevision = GetUiRevision(), nodeId = id, action, strategyUsed = action == "invoke" ? "wpf.routed-command-or-click" : "wpf.direct-control", bounds = GetBounds(element as FrameworkElement), state = GetState(element) };
@@ -387,11 +412,11 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
         var values = new List<string>();
         if (element is ButtonBase or MenuItem || element is ICommandSource { Command: not null }) values.Add("invoke");
         if (element is Selector) values.Add("select");
-        if (element is TextBox) values.Add("setText");
+        if (element is TextBox or PasswordBox) values.Add("setText");
         if (element is DatePicker) values.Add("setDate");
         if (element is RangeBase) values.Add("setRangeValue");
         if (element is ToggleButton) values.Add("toggle");
-        if (element is TreeViewItem) { values.Add("expand"); values.Add("collapse"); }
+        if (element is TreeViewItem or Expander) { values.Add("expand"); values.Add("collapse"); }
         if (element is UIElement { Focusable: true }) values.Add("focus");
         if (element is UIElement) values.Add("sendKey");
         var peer = element is FrameworkElement framework ? FrameworkElementAutomationPeer.CreatePeerForElement(framework) ?? FrameworkElementAutomationPeer.FromElement(framework) : null;
@@ -461,8 +486,9 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
     private static void SetText(DependencyObject element, string value)
     {
         if (element is TextBox textBox) { textBox.Text = value; return; }
+        if (element is PasswordBox passwordBox) { passwordBox.Password = value; return; }
         if (GetPeer(element)?.GetPattern(PatternInterface.Value) is IValueProvider provider && !provider.IsReadOnly) { provider.SetValue(value); return; }
-        throw new InvalidOperationException("setText requires a writable TextBox or UI Automation value provider.");
+        throw new InvalidOperationException("setText requires a writable TextBox, PasswordBox, or UI Automation value provider.");
     }
 
     private static void SetRangeValue(DependencyObject element, string? value)
@@ -483,7 +509,10 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
     private static void Select(DependencyObject element, string? value)
     {
         if (element is not Selector selector) throw new InvalidOperationException("select requires a Selector.");
-        var item = selector.Items.Cast<object>().FirstOrDefault(candidate => string.Equals(candidate?.ToString(), value, StringComparison.OrdinalIgnoreCase) || candidate is ContentControl { Content: string content } && string.Equals(content, value, StringComparison.OrdinalIgnoreCase));
+        var item = selector.Items.Cast<object>().FirstOrDefault(candidate =>
+            string.Equals(candidate?.ToString(), value, StringComparison.OrdinalIgnoreCase) ||
+            candidate is ContentControl { Content: string content } && string.Equals(content, value, StringComparison.OrdinalIgnoreCase) ||
+            candidate is HeaderedContentControl { Header: string header } && string.Equals(header, value, StringComparison.OrdinalIgnoreCase));
         if (item is null) throw new InvalidOperationException($"No selector item matched '{value}'.");
         selector.SelectedItem = item;
     }
@@ -540,7 +569,23 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
             return [(element, rootId)];
         }
 
-        return Application.Current.Windows.Cast<Window>().Select((window, index) => ((DependencyObject)window, $"{Prefix(kind)}:{index}"));
+        if (kind == TreeKind.Logical)
+            return Application.Current.Windows.Cast<Window>().Select((window, index) => ((DependencyObject)window, $"l:{index}"));
+
+        return GetVisualRoots();
+    }
+
+    private static IEnumerable<(DependencyObject Element, string Id)> GetVisualRoots()
+    {
+        foreach (var (window, index) in Application.Current.Windows.Cast<Window>().Select((window, index) => (window, index)))
+            yield return (window, $"v:{index}");
+
+        var popupIndex = 0;
+        foreach (var root in PresentationSource.CurrentSources.Cast<PresentationSource>()
+                     .Select(source => source.RootVisual)
+                     .OfType<DependencyObject>()
+                     .Where(root => root is not Window))
+            yield return (root, $"p:{popupIndex++}");
     }
 
     private (DependencyObject Element, TreeKind Kind) ResolveNode(string nodeId)
@@ -549,11 +594,21 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
             throw new InvalidDataException("nodeId is required and must be at most 512 characters.");
         var separator = nodeId.IndexOf(':');
         if (separator != 1) throw new InvalidDataException($"Invalid nodeId '{nodeId}'.");
-        var kind = nodeId[0] switch { 'v' => TreeKind.Visual, 'l' => TreeKind.Logical, _ => throw new InvalidDataException($"Invalid nodeId '{nodeId}'.") };
+        var prefix = nodeId[0];
+        var kind = prefix switch { 'v' or 'p' => TreeKind.Visual, 'l' => TreeKind.Logical, _ => throw new InvalidDataException($"Invalid nodeId '{nodeId}'.") };
         var parts = nodeId[(separator + 1)..].Split('/', StringSplitOptions.None);
-        if (!int.TryParse(parts[0], out var windowIndex) || windowIndex < 0 || windowIndex >= Application.Current.Windows.Count)
+        if (!int.TryParse(parts[0], out var rootIndex) || rootIndex < 0)
+            throw new InvalidDataException($"nodeId '{nodeId}' does not identify a current WPF root.");
+        DependencyObject current;
+        if (prefix == 'p')
+        {
+            current = GetVisualRoots().Where(root => root.Id.StartsWith("p:", StringComparison.Ordinal)).ElementAtOrDefault(rootIndex).Element
+                ?? throw new InvalidDataException($"nodeId '{nodeId}' does not identify a current popup root.");
+        }
+        else if (rootIndex < Application.Current.Windows.Count)
+            current = Application.Current.Windows[rootIndex];
+        else
             throw new InvalidDataException($"nodeId '{nodeId}' does not identify a current WPF window.");
-        DependencyObject current = Application.Current.Windows[windowIndex];
         foreach (var part in parts.Skip(1))
         {
             if (!int.TryParse(part, out var childIndex) || childIndex < 0) throw new InvalidDataException($"Invalid nodeId '{nodeId}'.");

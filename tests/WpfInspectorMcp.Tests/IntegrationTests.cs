@@ -10,6 +10,27 @@ namespace WpfInspectorMcp.Tests;
 public sealed class IntegrationTests
 {
     [Fact]
+    public async Task McpServer_AttachesToAndDetachesFromAnAlreadyRunningSample()
+    {
+        var samplePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "samples", "SampleWpfApp", "bin", "Debug", "net9.0-windows", "SampleWpfApp.exe"));
+        var serverPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "WpfInspectorMcp", "bin", "Debug", "net9.0-windows", "WpfInspectorMcp.exe"));
+        using var sample = Process.Start(new ProcessStartInfo(samplePath) { UseShellExecute = false })!;
+        try
+        {
+            await Task.Delay(750);
+            await using var client = await McpClient.CreateAsync(new StdioClientTransport(new StdioClientTransportOptions { Name = "attach-test", Command = serverPath }));
+            var attached = await client.CallToolAsync("attach_wpf_inspection", new Dictionary<string, object?> { ["processId"] = sample.Id });
+            Assert.False(attached.IsError is true, Text(attached));
+            var roots = await client.CallToolAsync("get_wpf_roots", new Dictionary<string, object?> { ["processId"] = sample.Id });
+            Assert.False(roots.IsError is true, Text(roots));
+            var detached = await client.CallToolAsync("end_wpf_inspection", new Dictionary<string, object?> { ["processId"] = sample.Id });
+            Assert.False(detached.IsError is true, Text(detached));
+            Assert.False(sample.HasExited);
+        }
+        finally { await EnsureProcessStoppedAsync(sample.Id); }
+    }
+
+    [Fact]
     public async Task McpServer_ClosesManagedInspectionWhenTheMcpSessionEnds()
     {
         var samplePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "samples", "SampleWpfApp", "bin", "Debug", "net9.0-windows", "SampleWpfApp.exe"));
@@ -45,7 +66,7 @@ public sealed class IntegrationTests
         var toolNames = (await client.ListToolsAsync()).Select(tool => tool.Name).ToHashSet(StringComparer.Ordinal);
         foreach (var expectedTool in new[]
         {
-            "start_wpf_inspection", "end_wpf_inspection", "get_inspection_windows", "get_wpf_roots",
+            "start_wpf_inspection", "attach_wpf_inspection", "end_wpf_inspection", "get_inspection_windows", "get_wpf_roots",
             "get_visual_tree", "get_logical_tree", "find_wpf_elements", "get_wpf_element_details", "get_wpf_bindings",
             "get_wpf_interactive_elements", "get_wpf_surfaces", "interact_with_wpf_element", "wait_for_wpf_state", "run_wpf_workflow",
             "take_inspection_screenshot", "click_inspection_window_point"
@@ -125,8 +146,27 @@ public sealed class IntegrationTests
 
             var openSettings = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "NavSettingsBtn", ["action"] = "auto" });
             Assert.False(openSettings.IsError is true, Text(openSettings));
+            var dashboardHidden = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["query"] = "System Analytics & Telemetry", ["condition"] = "hidden", ["timeoutMs"] = 3000 });
+            Assert.False(dashboardHidden.IsError is true, Text(dashboardHidden));
+            var settingsExists = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "ProfileList", ["condition"] = "exists", ["timeoutMs"] = 3000 });
+            Assert.False(settingsExists.IsError is true, Text(settingsExists));
+            var resetEnabled = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "ResetFormButton", ["condition"] = "enabled", ["timeoutMs"] = 3000 });
+            Assert.False(resetEnabled.IsError is true, Text(resetEnabled));
+            var disabledAction = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "DisabledActionButton", ["condition"] = "disabled", ["timeoutMs"] = 3000 });
+            Assert.False(disabledAction.IsError is true, Text(disabledAction));
             var setText = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "ApiKeyInput", ["action"] = "setText", ["value"] = "test-license" });
             Assert.False(setText.IsError is true, Text(setText));
+            var setName = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "NameInput", ["action"] = "setText", ["value"] = "Grace Hopper" });
+            Assert.False(setName.IsError is true, Text(setName));
+            Assert.Contains("Grace Hopper", Text(setName));
+            var setNotes = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "NotesInput", ["action"] = "setText", ["value"] = "First line\nSecond line" });
+            Assert.False(setNotes.IsError is true, Text(setNotes));
+            var setSecret = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "SecretInput", ["action"] = "setText", ["value"] = "test-secret" });
+            Assert.False(setSecret.IsError is true, Text(setSecret));
+            var clearRequired = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "RequiredInput", ["action"] = "setText", ["value"] = "" });
+            Assert.False(clearRequired.IsError is true, Text(clearRequired));
+            var requiredInvalid = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "RequiredInput", ["condition"] = "validationHasError", ["timeoutMs"] = 3000 });
+            Assert.False(requiredInvalid.IsError is true, Text(requiredInvalid));
             var focus = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "ApiKeyInput", ["action"] = "focus" });
             Assert.False(focus.IsError is true, Text(focus));
             var focused = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "ApiKeyInput", ["condition"] = "focused" });
@@ -135,26 +175,74 @@ public sealed class IntegrationTests
             Assert.False(key.IsError is true, Text(key));
             var selectMode = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "ModeSelector", ["action"] = "select", ["value"] = "Performance" });
             Assert.False(selectMode.IsError is true, Text(selectMode));
+            var selectProfile = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "ProfileList", ["action"] = "select", ["value"] = "Builder" });
+            Assert.False(selectProfile.IsError is true, Text(selectProfile));
+            var selectTab = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "WorkspaceTabs", ["action"] = "select", ["value"] = "Telemetry" });
+            Assert.False(selectTab.IsError is true, Text(selectTab));
             var setDate = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "MaintenanceDate", ["action"] = "setDate", ["value"] = "2026-12-31" });
             Assert.False(setDate.IsError is true, Text(setDate));
+            var setVolume = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "VolumeSlider", ["action"] = "setRangeValue", ["value"] = "80" });
+            Assert.False(setVolume.IsError is true, Text(setVolume));
+            var volumeValue = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "VolumeSlider", ["condition"] = "valueEquals", ["expectedValue"] = "80", ["timeoutMs"] = 3000 });
+            Assert.False(volumeValue.IsError is true, Text(volumeValue));
+            var chooseRadio = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "RadioBeta", ["action"] = "toggle", ["value"] = "true" });
+            Assert.False(chooseRadio.IsError is true, Text(chooseRadio));
+            var radioChecked = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "RadioBeta", ["condition"] = "checked", ["expectedValue"] = "True", ["timeoutMs"] = 3000 });
+            Assert.False(radioChecked.IsError is true, Text(radioChecked));
+            var toggleThreeState = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "TriStateCheck", ["action"] = "toggle", ["value"] = "true" });
+            Assert.False(toggleThreeState.IsError is true, Text(toggleThreeState));
             var expandTree = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "DiagnosticsRoot", ["action"] = "expand" });
             Assert.False(expandTree.IsError is true, Text(expandTree));
             var collapseTree = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "DiagnosticsRoot", ["action"] = "collapse" });
             Assert.False(collapseTree.IsError is true, Text(collapseTree));
+            var expandExpander = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "AdvancedExpander", ["action"] = "expand" });
+            Assert.False(expandExpander.IsError is true, Text(expandExpander));
+            var collapseExpander = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "AdvancedExpander", ["action"] = "collapse" });
+            Assert.False(collapseExpander.IsError is true, Text(collapseExpander));
+            var expandDeepTree = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "DeepRoot", ["action"] = "expand" });
+            Assert.False(expandDeepTree.IsError is true, Text(expandDeepTree));
+            var resetForm = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "ResetFormButton", ["action"] = "invoke" });
+            Assert.False(resetForm.IsError is true, Text(resetForm));
 
             var openDashboard = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "NavDashboardBtn", ["action"] = "auto" });
             Assert.False(openDashboard.IsError is true, Text(openDashboard));
             var dashboardButton = await client.CallToolAsync("find_wpf_elements", new Dictionary<string, object?> { ["processId"] = processId, ["query"] = "NavDashboardBtn" });
             var dashboardButtonId = FindMatchId(JsonNode.Parse(Text(dashboardButton))!, "NavDashboardBtn")!;
-            var dashboardButtonDetails = await client.CallToolAsync("get_wpf_element_details", new Dictionary<string, object?> { ["processId"] = processId, ["nodeId"] = dashboardButtonId });
-            var frame = JsonNode.Parse(Text(dashboardButtonDetails))!["bounds"]!["windowFrame"]!;
-            var rawClick = await client.CallToolAsync("click_inspection_window_point", new Dictionary<string, object?> { ["processId"] = processId, ["x"] = (int)(frame["x"]!.GetValue<double>() + frame["width"]!.GetValue<double>() / 2), ["y"] = (int)(frame["y"]!.GetValue<double>() + frame["height"]!.GetValue<double>() / 2) });
-            Assert.False(rawClick.IsError is true, Text(rawClick));
+            // Real mouse clicks require immediate user consent; validate only the
+            // safe rejection path in this unattended integration suite.
             var toggle = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "PerfToggle", ["action"] = "toggle", ["value"] = "false" });
             Assert.False(toggle.IsError is true, Text(toggle));
             Assert.Contains("isChecked", Text(toggle));
             var toggleState = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "PerfToggle", ["condition"] = "checked", ["expectedValue"] = "False" });
             Assert.False(toggleState.IsError is true, Text(toggleState));
+
+            var openModal = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "OpenModalBtn", ["action"] = "invoke" });
+            Assert.False(openModal.IsError is true, Text(openModal));
+            var modalVisible = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "ConfirmModalBtn", ["condition"] = "visible", ["timeoutMs"] = 3000 });
+            Assert.False(modalVisible.IsError is true, Text(modalVisible));
+            var confirmModal = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "ConfirmModalBtn", ["action"] = "invoke" });
+            Assert.False(confirmModal.IsError is true, Text(confirmModal));
+            var modalHidden = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "ConfirmModalBtn", ["condition"] = "hidden", ["timeoutMs"] = 3000 });
+            Assert.False(modalHidden.IsError is true, Text(modalHidden));
+
+            var openDrawer = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "OpenDrawerBtn", ["action"] = "invoke" });
+            Assert.False(openDrawer.IsError is true, Text(openDrawer));
+            var drawerVisible = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "CloseDrawerButton", ["condition"] = "visible", ["timeoutMs"] = 3000 });
+            Assert.False(drawerVisible.IsError is true, Text(drawerVisible));
+            var closeDrawer = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "CloseDrawerButton", ["action"] = "invoke" });
+            Assert.False(closeDrawer.IsError is true, Text(closeDrawer));
+            var drawerHidden = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "CloseDrawerButton", ["condition"] = "hidden", ["timeoutMs"] = 3000 });
+            Assert.False(drawerHidden.IsError is true, Text(drawerHidden));
+
+            var openPopup = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "OpenPopupButton", ["action"] = "invoke" });
+            Assert.False(openPopup.IsError is true, Text(openPopup));
+            var popupSurfaces = await client.CallToolAsync("get_wpf_surfaces", new Dictionary<string, object?> { ["processId"] = processId });
+            Assert.False(popupSurfaces.IsError is true, Text(popupSurfaces));
+            Assert.Contains("isPopup", Text(popupSurfaces));
+            var closePopup = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "ClosePopupButton", ["action"] = "invoke" });
+            Assert.False(closePopup.IsError is true, Text(closePopup));
+            var popupGone = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "ClosePopupButton", ["condition"] = "gone", ["timeoutMs"] = 3000 });
+            Assert.False(popupGone.IsError is true, Text(popupGone));
 
 
             var workflowSteps = JsonSerializer.Deserialize<JsonElement[]>("""
@@ -184,6 +272,12 @@ public sealed class IntegrationTests
             var png = image.DecodedData.ToArray();
             Assert.True(png.Length > 1_000);
             Assert.Equal(new byte[] { 0x89, 0x50, 0x4E, 0x47 }, png[..4]);
+            if (string.Equals(Environment.GetEnvironmentVariable("WPF_INSPECTOR_CAPTURE_SAMPLE_SCREENSHOT"), "1", StringComparison.Ordinal))
+            {
+                var screenshotPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "assets", "sample-dashboard.png"));
+                Directory.CreateDirectory(Path.GetDirectoryName(screenshotPath)!);
+                await File.WriteAllBytesAsync(screenshotPath, png);
+            }
 
             var invalidTarget = await client.CallToolAsync("get_visual_tree", new Dictionary<string, object?> { ["processId"] = int.MaxValue });
             Assert.True(invalidTarget.IsError is true);

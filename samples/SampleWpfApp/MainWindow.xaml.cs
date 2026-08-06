@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Windows;
+using System.Windows.Controls;
 using Wpf.Ui.Controls;
 
 namespace SampleWpfApp;
@@ -16,9 +18,12 @@ public partial class MainWindow : FluentWindow
         new("DCS World Flight Stick", "Direct HID axis mapping for HOTAS setups")
     };
 
+    public string RequiredValue { get; set; } = "Required value";
+
     public MainWindow()
     {
         InitializeComponent();
+        DataContext = this;
         CatalogListView.ItemsSource = CatalogItems;
     }
 
@@ -76,4 +81,28 @@ public partial class MainWindow : FluentWindow
     {
         TestDrawerOverlay.Visibility = Visibility.Collapsed;
     }
+
+    private void ResetForm_Click(object sender, RoutedEventArgs e)
+    {
+        NameInput.Text = "Ada Lovelace";
+        NotesInput.Text = "Line one";
+        SecretInput.Password = "initial-secret";
+        ProfileList.SelectedIndex = 0;
+        WorkspaceTabs.SelectedIndex = 0;
+        RadioAlpha.IsChecked = true;
+        VolumeSlider.Value = 30;
+        TriStateCheck.IsChecked = null;
+        StatusLabel.Text = "Status: Form Reset";
+    }
+
+    private void OpenPopup_Click(object sender, RoutedEventArgs e) => InspectorPopup.IsOpen = true;
+    private void ClosePopup_Click(object sender, RoutedEventArgs e) => InspectorPopup.IsOpen = false;
+}
+
+public sealed class RequiredTextRule : ValidationRule
+{
+    public override ValidationResult Validate(object value, CultureInfo cultureInfo) =>
+        string.IsNullOrWhiteSpace(value as string)
+            ? new ValidationResult(false, "A value is required.")
+            : ValidationResult.ValidResult;
 }

@@ -16,4 +16,20 @@
     <PackageReference Include="System.Drawing.Common" Version="9.0.1" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\WpfInspector.NativeInjector\bin\$(Configuration)\x64\WpfInspector.NativeInjector.x64.dll"
+          Link="WpfInspector.NativeInjector.x64.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="BuildNativeInspectionInjector" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <NativeInjectorProject>$(MSBuildProjectDirectory)\..\WpfInspector.NativeInjector\WpfInspector.NativeInjector.vcxproj</NativeInjectorProject>
+      <VsWhere>$([System.Environment]::GetEnvironmentVariable('ProgramFiles(x86)'))\Microsoft Visual Studio\Installer\vswhere.exe</VsWhere>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(VsWhere)')" Text="Visual Studio Build Tools with C++ support are required to build the native inspection injector." />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -Command &quot;&amp; (&amp; '$(VsWhere)' -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find 'MSBuild\**\Bin\MSBuild.exe') '$(NativeInjectorProject)' /t:Build /p:Configuration=$(Configuration) /p:Platform=x64 /m&quot;" />
+  </Target>
+
 </Project>

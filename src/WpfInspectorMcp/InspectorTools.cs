@@ -13,7 +13,7 @@ public sealed class InspectorTools
 {
     private static readonly ConcurrentDictionary<int, ManagedProcess> Inspections = new();
 
-    [McpServerTool, Description("Starts a WPF executable in a managed AI-inspection session. The application is visibly marked '[AI inspection]' in its title bar and is automatically closed when this MCP server exits. Requires an absolute existing .exe path.")]
+    [McpServerTool, Description("Starts a WPF executable normally, then attaches the trusted inspection agent after WPF has initialized. The application is visibly marked '[AI inspection]' and is automatically closed when this MCP server exits. Requires an absolute existing .exe path.")]
     public static CallToolResult StartWpfInspection(
         [Description("Required absolute path to the WPF executable.")] string executablePath,
         [Description("Optional command-line arguments supplied verbatim to the target application.")] string? arguments = null,
@@ -32,15 +32,32 @@ public sealed class InspectorTools
             var pipeName = $"wpf-inspector-{Guid.NewGuid():N}";
             var secret = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
             var startInfo = new ProcessStartInfo { FileName = fullPath, Arguments = arguments ?? string.Empty, WorkingDirectory = directory, UseShellExecute = false };
-            startInfo.Environment["DOTNET_STARTUP_HOOKS"] = agentPath;
-            startInfo.Environment["WPF_INSPECTOR_PIPE"] = pipeName;
-            startInfo.Environment["WPF_INSPECTOR_SECRET"] = secret;
             var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Windows did not start the target process.");
-            Inspections[process.Id] = new ManagedProcess(process, pipeName, secret);
+            AttachAfterWpfStarts(process, agentPath, pipeName, secret);
+            Inspections[process.Id] = new ManagedProcess(process, pipeName, secret, true);
             Log($"Started inspection session for PID {process.Id}; agent pipe {pipeName}.");
             return Text(JsonSerializer.Serialize(new { processId = process.Id, processName = process.ProcessName, executablePath = fullPath, titlePrefix = "[AI inspection]" }));
         }
         catch (Exception exception) { return Error($"Could not start the WPF inspection session: {exception.Message}"); }
+    }
+
+    [McpServerTool, Description("Attaches the trusted WPF inspection agent to a specified already-running local CoreCLR WPF process. This changes the target process state; require explicit user confirmation immediately before calling it. The target must be a same-user, non-elevated x64 process.")]
+    public static CallToolResult AttachWpfInspection([Description("Exact PID of the local WPF process to inspect.")] int processId)
+    {
+        try
+        {
+            if (Inspections.ContainsKey(processId)) return Error("This process already has a managed inspection session.");
+            var process = Process.GetProcessById(processId);
+            var agentPath = Path.Combine(AppContext.BaseDirectory, "WpfInspector.Agent.dll");
+            if (!File.Exists(agentPath)) return Error("The WPF inspection agent is not present beside the MCP server.");
+            var pipeName = $"wpf-inspector-{Guid.NewGuid():N}";
+            var secret = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+            NativeInspectionInjector.Attach(process, agentPath, Path.Combine(AppContext.BaseDirectory, "WpfInspectorMcp.runtimeconfig.json"), pipeName, secret);
+            Inspections[process.Id] = new ManagedProcess(process, pipeName, secret, false);
+            Log($"Attached inspection session to PID {process.Id}.");
+            return Text(JsonSerializer.Serialize(new { processId = process.Id, processName = process.ProcessName, titlePrefix = "[AI inspection]" }));
+        }
+        catch (Exception exception) { return Error($"Could not attach the WPF inspection session: {exception.Message}"); }
     }
 
     [McpServerTool, Description("Ends one managed AI-inspection session and closes its WPF application. Only accepts a PID returned by start_wpf_inspection.")]
@@ -189,9 +206,14 @@ public sealed class InspectorTools
         if (!Inspections.TryRemove(processId, out var inspection)) return Error("This MCP server does not manage that inspection process.");
         try
         {
-            if (!inspection.Process.HasExited) inspection.Process.Kill(entireProcessTree: true);
+            if (!inspection.Process.HasExited)
+            {
+                try { InspectionAgentClient.RequestAsync(inspection.PipeName, inspection.Secret, "stop", null, CancellationToken.None).GetAwaiter().GetResult(); }
+                catch { /* Process exit remains the safe cleanup fallback for owned sessions. */ }
+            }
+            if (!inspection.Process.HasExited && inspection.OwnsProcess) inspection.Process.Kill(entireProcessTree: true);
             Log($"{action} inspection session for PID {processId}.");
-            return Text($"{action} managed inspection process {processId}.");
+            return Text(inspection.OwnsProcess ? $"{action} managed inspection process {processId}." : $"{action} inspection session for process {processId}; the target remains running.");
         }
         catch (Exception exception) { return Error($"Could not end managed inspection process {processId}: {exception.Message}"); }
         finally { inspection.Process.Dispose(); }
@@ -200,5 +222,33 @@ public sealed class InspectorTools
     private static void Log(string message) => Console.Error.WriteLine($"[{DateTimeOffset.UtcNow:O}] WpfInspectorMcp {message}");
     private static CallToolResult Text(string text) => new() { Content = [new TextContentBlock { Text = text }] };
     private static CallToolResult Error(string message) => new() { IsError = true, Content = [new TextContentBlock { Text = message }] };
-    private sealed record ManagedProcess(Process Process, string PipeName, string Secret);
+    private static void AttachAfterWpfStarts(Process process, string agentPath, string pipeName, string secret)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        Exception? last = null;
+        while (DateTime.UtcNow < deadline && !process.HasExited)
+        {
+            try
+            {
+                process.Refresh();
+                if (!Win32Api.GetVisibleWindowsForProcessId(process.Id).Any())
+                {
+                    Thread.Sleep(100);
+                    continue;
+                }
+                NativeInspectionInjector.Attach(process, agentPath, Path.Combine(AppContext.BaseDirectory, "WpfInspectorMcp.runtimeconfig.json"), pipeName, secret);
+                return;
+            }
+            catch (InvalidOperationException exception) when (
+                exception.Message.Contains("not a running CoreCLR WPF", StringComparison.Ordinal) ||
+                exception.Message.Contains("CoreCLR host", StringComparison.Ordinal))
+            {
+                last = exception;
+                Thread.Sleep(150);
+            }
+        }
+        throw new InvalidOperationException("The launched application did not become an inspectable, visible CoreCLR WPF process within 15 seconds.", last);
+    }
+
+    private sealed record ManagedProcess(Process Process, string PipeName, string Secret, bool OwnsProcess);
 }

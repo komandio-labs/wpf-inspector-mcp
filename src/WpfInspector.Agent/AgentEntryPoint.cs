@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Text.Json;
 
 namespace WpfInspector.Agent;
 
@@ -20,4 +21,18 @@ public static class AgentEntryPoint
             agent.Start();
         }
     }
+
+    public static void InitializeInjectedSession(string sessionJson)
+    {
+        var session = JsonSerializer.Deserialize<InjectedSession>(sessionJson) ?? throw new InvalidOperationException("Invalid injected inspection session.");
+        Initialize(session.PipeName, session.Secret);
+    }
+
+    public static int InitializeFromInjectionArgument(string sessionJson)
+    {
+        try { InitializeInjectedSession(sessionJson); return 0; }
+        catch { return 1; }
+    }
+
+    private sealed record InjectedSession(string PipeName, string Secret);
 }
