@@ -31,7 +31,7 @@ public sealed class InspectorTools
 
             var pipeName = $"wpf-inspector-{Guid.NewGuid():N}";
             var secret = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
-            var startInfo = new ProcessStartInfo { FileName = fullPath, Arguments = arguments ?? string.Empty, WorkingDirectory = directory, UseShellExecute = false };
+            var startInfo = CreateTargetStartInfo(fullPath, arguments, directory);
             var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Windows did not start the target process.");
             AttachAfterWpfStarts(process, agentPath, pipeName, secret);
             Inspections[process.Id] = new ManagedProcess(process, pipeName, secret, true);
@@ -222,6 +222,30 @@ public sealed class InspectorTools
     private static void Log(string message) => Console.Error.WriteLine($"[{DateTimeOffset.UtcNow:O}] WpfInspectorMcp {message}");
     private static CallToolResult Text(string text) => new() { Content = [new TextContentBlock { Text = text }] };
     private static CallToolResult Error(string message) => new() { IsError = true, Content = [new TextContentBlock { Text = message }] };
+
+    // The inspection agent is injected only after WPF has opened a window.  Strip
+    // every legacy launch-hook value explicitly: ProcessStartInfo otherwise
+    // inherits its host's environment and a stale value makes some WPF apps fail
+    // in FontCache before they can become inspectable.
+    internal static ProcessStartInfo CreateTargetStartInfo(string executablePath, string? arguments, string workingDirectory)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = executablePath,
+            Arguments = arguments ?? string.Empty,
+            WorkingDirectory = workingDirectory,
+            UseShellExecute = false
+        };
+        startInfo.Environment.Remove("DOTNET_STARTUP_HOOKS");
+        startInfo.Environment.Remove("WPF_INSPECTOR_PIPE");
+        startInfo.Environment.Remove("WPF_INSPECTOR_SECRET");
+        // Codex starts MCP servers with a deliberately small environment. WPF's
+        // FontCache uses WINDIR while constructing its font URI, so restore the
+        // standard Windows value for an inspected desktop application.
+        startInfo.Environment["WINDIR"] = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        return startInfo;
+    }
+
     private static void AttachAfterWpfStarts(Process process, string agentPath, string pipeName, string secret)
     {
         var deadline = DateTime.UtcNow.AddSeconds(15);
