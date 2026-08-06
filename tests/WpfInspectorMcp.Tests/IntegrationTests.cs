@@ -122,20 +122,20 @@ public sealed class IntegrationTests
             Assert.Contains("Text", Text(bindings));
             Assert.Contains("Value", Text(bindings));
 
-            var interactive = await client.CallToolAsync("get_wpf_interactive_elements", new Dictionary<string, object?> { ["processId"] = processId, ["query"] = "NavCatalogBtn" });
+            var interactive = await client.CallToolAsync("get_wpf_interactive_elements", new Dictionary<string, object?> { ["processId"] = processId, ["query"] = "NavCollectionBtn" });
             Assert.False(interactive.IsError is true, Text(interactive));
             Assert.Contains("invoke", Text(interactive));
 
-            var catalogDetails = await client.CallToolAsync("get_wpf_element_details", new Dictionary<string, object?> { ["processId"] = processId, ["nodeId"] = FindMatchId(JsonNode.Parse(Text(await client.CallToolAsync("find_wpf_elements", new Dictionary<string, object?> { ["processId"] = processId, ["query"] = "NavCatalogBtn" })))!, "NavCatalogBtn") });
-            Assert.False(catalogDetails.IsError is true, Text(catalogDetails));
-            Assert.Contains("windowFrame", Text(catalogDetails));
-            Assert.Contains("isEnabled", Text(catalogDetails));
-            Assert.Contains("invoke", Text(catalogDetails));
+            var collectionDetails = await client.CallToolAsync("get_wpf_element_details", new Dictionary<string, object?> { ["processId"] = processId, ["nodeId"] = FindMatchId(JsonNode.Parse(Text(await client.CallToolAsync("find_wpf_elements", new Dictionary<string, object?> { ["processId"] = processId, ["query"] = "NavCollectionBtn" })))!, "NavCollectionBtn") });
+            Assert.False(collectionDetails.IsError is true, Text(collectionDetails));
+            Assert.Contains("windowFrame", Text(collectionDetails));
+            Assert.Contains("isEnabled", Text(collectionDetails));
+            Assert.Contains("invoke", Text(collectionDetails));
 
-            var invokeCatalog = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "NavCatalogBtn", ["action"] = "invoke" });
-            Assert.False(invokeCatalog.IsError is true, Text(invokeCatalog));
-            var catalogVisible = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["query"] = "Adapter Package Catalog", ["condition"] = "visible", ["timeoutMs"] = 3000 });
-            Assert.False(catalogVisible.IsError is true, Text(catalogVisible));
+            var invokeCollection = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "NavCollectionBtn", ["action"] = "invoke" });
+            Assert.False(invokeCollection.IsError is true, Text(invokeCollection));
+            var collectionVisible = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["query"] = "Collection Workspace", ["condition"] = "visible", ["timeoutMs"] = 3000 });
+            Assert.False(collectionVisible.IsError is true, Text(collectionVisible));
 
             var setSlider = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "SpeedSlider", ["action"] = "setRangeValue", ["value"] = "120" });
             Assert.False(setSlider.IsError is true, Text(setSlider));
@@ -154,7 +154,7 @@ public sealed class IntegrationTests
             Assert.False(resetEnabled.IsError is true, Text(resetEnabled));
             var disabledAction = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "DisabledActionButton", ["condition"] = "disabled", ["timeoutMs"] = 3000 });
             Assert.False(disabledAction.IsError is true, Text(disabledAction));
-            var setText = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "ApiKeyInput", ["action"] = "setText", ["value"] = "test-license" });
+            var setText = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "SampleTextInput", ["action"] = "setText", ["value"] = "sample value" });
             Assert.False(setText.IsError is true, Text(setText));
             var setName = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "NameInput", ["action"] = "setText", ["value"] = "Grace Hopper" });
             Assert.False(setName.IsError is true, Text(setName));
@@ -167,11 +167,11 @@ public sealed class IntegrationTests
             Assert.False(clearRequired.IsError is true, Text(clearRequired));
             var requiredInvalid = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "RequiredInput", ["condition"] = "validationHasError", ["timeoutMs"] = 3000 });
             Assert.False(requiredInvalid.IsError is true, Text(requiredInvalid));
-            var focus = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "ApiKeyInput", ["action"] = "focus" });
+            var focus = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "SampleTextInput", ["action"] = "focus" });
             Assert.False(focus.IsError is true, Text(focus));
-            var focused = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "ApiKeyInput", ["condition"] = "focused" });
+            var focused = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "SampleTextInput", ["condition"] = "focused" });
             Assert.False(focused.IsError is true, Text(focused));
-            var key = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "ApiKeyInput", ["action"] = "sendKey", ["value"] = "Enter" });
+            var key = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "SampleTextInput", ["action"] = "sendKey", ["value"] = "Enter" });
             Assert.False(key.IsError is true, Text(key));
             var selectMode = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "ModeSelector", ["action"] = "select", ["value"] = "Performance" });
             Assert.False(selectMode.IsError is true, Text(selectMode));
@@ -250,8 +250,8 @@ public sealed class IntegrationTests
                   { "kind": "interact", "action": "invoke", "locator": { "automationId": "NavDashboardBtn" } },
                   { "kind": "wait", "condition": "visible", "locator": { "query": "System Analytics & Telemetry" }, "timeoutMs": 3000 },
                   { "kind": "assert", "condition": "visible", "locator": { "query": "System Analytics & Telemetry" } },
-                  { "kind": "interact", "action": "invoke", "locator": { "automationId": "NavCatalogBtn" } },
-                  { "kind": "wait", "condition": "visible", "locator": { "query": "Adapter Package Catalog" }, "timeoutMs": 3000 }
+                  { "kind": "interact", "action": "invoke", "locator": { "automationId": "NavCollectionBtn" } },
+                  { "kind": "wait", "condition": "visible", "locator": { "query": "Collection Workspace" }, "timeoutMs": 3000 }
                 ]
                 """)!;
             var workflow = await client.CallToolAsync("run_wpf_workflow", new Dictionary<string, object?> { ["processId"] = processId, ["steps"] = workflowSteps });

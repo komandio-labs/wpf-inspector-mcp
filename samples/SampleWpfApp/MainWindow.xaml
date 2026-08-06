@@ -32,7 +32,7 @@
                     <TextBlock Text="WPF INSPECTOR DEMO" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource SystemAccentColorBrush}" Margin="8,0,0,16"/>
 
                     <ui:Button x:Name="NavDashboardBtn" AutomationProperties.AutomationId="NavDashboardBtn" Content="📊 Dashboard &amp; Analytics" Appearance="Primary" Height="38" HorizontalAlignment="Stretch" Margin="0,0,0,8" Click="NavDashboard_Click"/>
-                    <ui:Button x:Name="NavCatalogBtn" AutomationProperties.AutomationId="NavCatalogBtn" Content="📦 Adapter Catalog" Appearance="Secondary" Height="38" HorizontalAlignment="Stretch" Margin="0,0,0,8" Click="NavCatalog_Click"/>
+                    <ui:Button x:Name="NavCollectionBtn" AutomationProperties.AutomationId="NavCollectionBtn" Content="📚 Project Collection" Appearance="Secondary" Height="38" HorizontalAlignment="Stretch" Margin="0,0,0,8" Click="NavCollection_Click"/>
                     <ui:Button x:Name="NavSettingsBtn" AutomationProperties.AutomationId="NavSettingsBtn" Content="⚙️ Settings &amp; Configuration" Appearance="Secondary" Height="38" HorizontalAlignment="Stretch" Margin="0,0,0,16" Click="NavSettings_Click"/>
 
                     <Separator Margin="0,0,0,16"/>
@@ -88,9 +88,9 @@
                             <ui:Card Grid.Column="4">
                                 <Border Padding="16">
                                     <StackPanel>
-                                        <TextBlock Text="Adapter Mode" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                                        <TextBlock Text="PRO TIER ACTIVE" FontSize="18" FontWeight="Bold" Foreground="#34D399" Margin="0,4,0,0"/>
-                                        <ui:Button Content="Toggle Override" Appearance="Secondary" Height="30" Margin="0,12,0,0" Click="ToggleOverride_Click"/>
+                                        <TextBlock Text="Workspace Mode" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                        <TextBlock Text="FOCUS MODE ACTIVE" FontSize="18" FontWeight="Bold" Foreground="#34D399" Margin="0,4,0,0"/>
+                                        <ui:Button Content="Toggle Highlight" Appearance="Secondary" Height="30" Margin="0,12,0,0" Click="ToggleOverride_Click"/>
                                     </StackPanel>
                                 </Border>
                             </ui:Card>
@@ -100,15 +100,15 @@
                         <ui:Card Grid.Row="2">
                             <Border Padding="20">
                                 <StackPanel>
-                                    <TextBlock Text="Live Input Validation Controls" FontSize="14" FontWeight="Bold" Margin="0,0,0,12"/>
+                                    <TextBlock Text="Interaction Controls" FontSize="14" FontWeight="Bold" Margin="0,0,0,12"/>
 
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                                        <TextBlock Text="Enable High Performance Mode:" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                                        <TextBlock Text="Enable compact mode:" VerticalAlignment="Center" Margin="0,0,16,0"/>
                                         <ui:ToggleSwitch x:Name="PerfToggle" AutomationProperties.AutomationId="PerfToggle" IsChecked="True"/>
                                     </StackPanel>
 
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                                        <TextBlock Text="Simulation Speed (Hz):" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                                        <TextBlock Text="Refresh interval:" VerticalAlignment="Center" Margin="0,0,16,0"/>
                                         <Slider x:Name="SpeedSlider" AutomationProperties.AutomationId="SpeedSlider" Minimum="10" Maximum="240" Value="60" Width="200" VerticalAlignment="Center"/>
                                         <TextBlock x:Name="SpeedReadout" AutomationProperties.AutomationId="SpeedReadout" Text="{Binding ElementName=SpeedSlider, Path=Value, StringFormat={}{0:F0} Hz}" VerticalAlignment="Center" Margin="12,0,0,0" FontWeight="Bold"/>
                                     </StackPanel>
@@ -119,16 +119,16 @@
                         </ui:Card>
                     </Grid>
 
-                <!-- View 2: Adapter Catalog View -->
-                <Grid x:Name="CatalogView" Visibility="Collapsed">
+                <!-- View 2: Project Collection View -->
+                <Grid x:Name="CollectionView" Visibility="Collapsed">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Text="Adapter Package Catalog" FontSize="20" FontWeight="Bold" Margin="0,0,0,16"/>
+                    <TextBlock Grid.Row="0" Text="Collection Workspace" FontSize="20" FontWeight="Bold" Margin="0,0,0,16"/>
 
-                    <ListView Grid.Row="1" x:Name="CatalogListView" AutomationProperties.AutomationId="CatalogListView" Background="Transparent" BorderThickness="0">
+                    <ListView Grid.Row="1" x:Name="CollectionListView" AutomationProperties.AutomationId="CollectionListView" Background="Transparent" BorderThickness="0">
                         <ListView.ItemContainerStyle>
                             <Style TargetType="ListViewItem">
                                 <Setter Property="Background" Value="Transparent"/>
@@ -150,7 +150,7 @@
                                             <TextBlock Text="{Binding Description}" FontSize="12" Foreground="#FFBDBDBD" Margin="0,2,0,0"/>
                                         </StackPanel>
 
-                                        <ui:Button Grid.Column="1" Content="Install Package" Appearance="Primary" Height="32"/>
+                                        <ui:Button Grid.Column="1" Content="Open Record" Appearance="Primary" Height="32"/>
                                     </Grid>
                                 </ui:Card>
                             </DataTemplate>
@@ -163,7 +163,7 @@
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
                         <TextBlock Text="Application Settings" FontSize="20" FontWeight="Bold" Margin="0,0,0,16"/>
-                        <ui:TextBox x:Name="ApiKeyInput" AutomationProperties.AutomationId="ApiKeyInput" PlaceholderText="Enter License / Order Key..." Height="38" Margin="0,0,0,16"/>
+                        <ui:TextBox x:Name="SampleTextInput" AutomationProperties.AutomationId="SampleTextInput" PlaceholderText="Enter a sample value..." Height="38" Margin="0,0,0,16"/>
                         <ComboBox x:Name="ModeSelector" AutomationProperties.AutomationId="ModeSelector" SelectedIndex="0" Margin="0,0,0,16">
                             <ComboBoxItem Content="Balanced"/>
                             <ComboBoxItem Content="Performance"/>
@@ -254,7 +254,7 @@
                     <ScrollViewer Grid.Row="1">
                         <StackPanel>
                             <TextBlock Text="• [15:28:01] Process Attached (PID 12480)" Margin="0,0,0,8" FontSize="12"/>
-                            <TextBlock Text="• [15:28:05] Navigation Click: Catalog View" Margin="0,0,0,8" FontSize="12"/>
+                            <TextBlock Text="• [15:28:05] Navigation Click: Collection View" Margin="0,0,0,8" FontSize="12"/>
                             <TextBlock Text="• [15:28:10] Screenshot Captured: 1100x720" Margin="0,0,0,8" FontSize="12"/>
                         </StackPanel>
                     </ScrollViewer>

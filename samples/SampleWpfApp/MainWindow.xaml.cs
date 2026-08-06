@@ -6,16 +6,16 @@ using Wpf.Ui.Controls;
 
 namespace SampleWpfApp;
 
-public record AdapterItem(string Title, string Description);
+public record CollectionItem(string Title, string Description);
 
 public partial class MainWindow : FluentWindow
 {
-    public ObservableCollection<AdapterItem> CatalogItems { get; } = new()
+    public ObservableCollection<CollectionItem> CollectionItems { get; } = new()
     {
-        new("Space Engineers 2 Grid Flight", "6-DOF Newtonian physics adapter module"),
-        new("Elite Dangerous Flight Deck", "HOSAS rotational dampening & throttle curves"),
-        new("Star Citizen Cockpit Control", "VJoy virtual joystick integration for flight control"),
-        new("DCS World Flight Stick", "Direct HID axis mapping for HOTAS setups")
+        new("Quarterly Planning", "A shared roadmap and milestone review"),
+        new("Research Notes", "Collected findings for the current initiative"),
+        new("Design Review", "Open decisions and annotated mockups"),
+        new("Team Retrospective", "Actions and observations from the last cycle")
     };
 
     public string RequiredValue { get; set; } = "Required value";
@@ -24,36 +24,36 @@ public partial class MainWindow : FluentWindow
     {
         InitializeComponent();
         DataContext = this;
-        CatalogListView.ItemsSource = CatalogItems;
+        CollectionListView.ItemsSource = CollectionItems;
     }
 
     private void NavDashboard_Click(object sender, RoutedEventArgs e)
     {
         DashboardView.Visibility = Visibility.Visible;
-        CatalogView.Visibility = Visibility.Collapsed;
+        CollectionView.Visibility = Visibility.Collapsed;
         SettingsView.Visibility = Visibility.Collapsed;
         StatusLabel.Text = "Status: Navigated to Dashboard";
     }
 
-    private void NavCatalog_Click(object sender, RoutedEventArgs e)
+    private void NavCollection_Click(object sender, RoutedEventArgs e)
     {
         DashboardView.Visibility = Visibility.Collapsed;
-        CatalogView.Visibility = Visibility.Visible;
+        CollectionView.Visibility = Visibility.Visible;
         SettingsView.Visibility = Visibility.Collapsed;
-        StatusLabel.Text = "Status: Navigated to Catalog";
+        StatusLabel.Text = "Status: Navigated to Collection";
     }
 
     private void NavSettings_Click(object sender, RoutedEventArgs e)
     {
         DashboardView.Visibility = Visibility.Collapsed;
-        CatalogView.Visibility = Visibility.Collapsed;
+        CollectionView.Visibility = Visibility.Collapsed;
         SettingsView.Visibility = Visibility.Visible;
         StatusLabel.Text = "Status: Navigated to Settings";
     }
 
     private void ToggleOverride_Click(object sender, RoutedEventArgs e)
     {
-        StatusLabel.Text = "Status: License Override Toggled!";
+        StatusLabel.Text = "Status: Highlight Toggled!";
     }
 
     private void OpenModal_Click(object sender, RoutedEventArgs e)
