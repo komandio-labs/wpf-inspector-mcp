@@ -10,10 +10,42 @@ namespace WpfInspectorMcp.Tests;
 public sealed class IntegrationTests
 {
     [Fact]
+    public async Task McpServer_StartsAndEndsExplicitWpfTargetWhenConfigured()
+    {
+        var targetPath = Environment.GetEnvironmentVariable("WPF_INSPECTOR_VALIDATION_TARGET");
+        if (string.IsNullOrWhiteSpace(targetPath)) return;
+
+        var executablePath = Path.GetFullPath(targetPath);
+        Assert.True(File.Exists(executablePath), $"Validation target not found: {executablePath}");
+        var serverPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "WpfInspectorMcp", "bin", BuildConfiguration, "net9.0-windows", "WpfInspectorMcp.exe"));
+        await using var client = await McpClient.CreateAsync(new StdioClientTransport(new StdioClientTransportOptions { Name = "configured-target-test", Command = serverPath }));
+
+        var processId = 0;
+        try
+        {
+            var start = await client.CallToolAsync("start_wpf_inspection", new Dictionary<string, object?> { ["executablePath"] = executablePath });
+            Assert.False(start.IsError is true, Text(start));
+            processId = JsonNode.Parse(Text(start))!["processId"]!.GetValue<int>();
+
+            var roots = await client.CallToolAsync("get_wpf_roots", new Dictionary<string, object?> { ["processId"] = processId });
+            Assert.False(roots.IsError is true, Text(roots));
+
+            var end = await client.CallToolAsync("end_wpf_inspection", new Dictionary<string, object?> { ["processId"] = processId });
+            Assert.False(end.IsError is true, Text(end));
+            await AssertProcessStopsAsync(processId);
+            processId = 0;
+        }
+        finally
+        {
+            if (processId != 0) await EnsureProcessStoppedAsync(processId);
+        }
+    }
+
+    [Fact]
     public async Task McpServer_AttachesToAndDetachesFromAnAlreadyRunningSample()
     {
-        var samplePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "samples", "SampleWpfApp", "bin", "Debug", "net9.0-windows", "SampleWpfApp.exe"));
-        var serverPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "WpfInspectorMcp", "bin", "Debug", "net9.0-windows", "WpfInspectorMcp.exe"));
+        var samplePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "samples", "SampleWpfApp", "bin", BuildConfiguration, "net9.0-windows", "SampleWpfApp.exe"));
+        var serverPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "WpfInspectorMcp", "bin", BuildConfiguration, "net9.0-windows", "WpfInspectorMcp.exe"));
         using var sample = Process.Start(new ProcessStartInfo(samplePath) { UseShellExecute = false })!;
         try
         {
@@ -33,8 +65,8 @@ public sealed class IntegrationTests
     [Fact]
     public async Task McpServer_ClosesManagedInspectionWhenTheMcpSessionEnds()
     {
-        var samplePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "samples", "SampleWpfApp", "bin", "Debug", "net9.0-windows", "SampleWpfApp.exe"));
-        var serverPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "WpfInspectorMcp", "bin", "Debug", "net9.0-windows", "WpfInspectorMcp.exe"));
+        var samplePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "samples", "SampleWpfApp", "bin", BuildConfiguration, "net9.0-windows", "SampleWpfApp.exe"));
+        var serverPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "WpfInspectorMcp", "bin", BuildConfiguration, "net9.0-windows", "WpfInspectorMcp.exe"));
         var processId = 0;
         try
         {
@@ -57,8 +89,8 @@ public sealed class IntegrationTests
     [Fact]
     public async Task McpServer_InspectsEveryManagedWpfCapabilityAndClosesTheApp()
     {
-        var samplePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "samples", "SampleWpfApp", "bin", "Debug", "net9.0-windows", "SampleWpfApp.exe"));
-        var serverPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "WpfInspectorMcp", "bin", "Debug", "net9.0-windows", "WpfInspectorMcp.exe"));
+        var samplePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "samples", "SampleWpfApp", "bin", BuildConfiguration, "net9.0-windows", "SampleWpfApp.exe"));
+        var serverPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "WpfInspectorMcp", "bin", BuildConfiguration, "net9.0-windows", "WpfInspectorMcp.exe"));
         Assert.True(File.Exists(samplePath), $"Sample app not found: {samplePath}");
         Assert.True(File.Exists(serverPath), $"MCP server not found: {serverPath}");
 
@@ -134,6 +166,14 @@ public sealed class IntegrationTests
 
             var invokeCollection = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "NavCollectionBtn", ["action"] = "invoke" });
             Assert.False(invokeCollection.IsError is true, Text(invokeCollection));
+
+            var revisionBeforeSemanticNavigation = JsonNode.Parse(Text(await client.CallToolAsync("get_wpf_roots", new Dictionary<string, object?> { ["processId"] = processId })))!["uiRevision"]!.GetValue<string>();
+            var invokeSemanticNavigation = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "SemanticNavigationItem", ["action"] = "invoke" });
+            Assert.False(invokeSemanticNavigation.IsError is true, Text(invokeSemanticNavigation));
+            var revisionAfterSemanticNavigation = JsonNode.Parse(Text(invokeSemanticNavigation))!["uiRevision"]!.GetValue<string>();
+            Assert.NotEqual(revisionBeforeSemanticNavigation, revisionAfterSemanticNavigation);
+            var semanticNavigationInvoked = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "SemanticNavigationCount", ["condition"] = "textEquals", ["expectedValue"] = "1", ["timeoutMs"] = 3000 });
+            Assert.False(semanticNavigationInvoked.IsError is true, Text(semanticNavigationInvoked));
             var collectionVisible = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["query"] = "Collection Workspace", ["condition"] = "visible", ["timeoutMs"] = 3000 });
             Assert.False(collectionVisible.IsError is true, Text(collectionVisible));
             var activeCollection = await client.CallToolAsync("get_wpf_element_details", new Dictionary<string, object?> { ["processId"] = processId, ["nodeId"] = FindMatchId(JsonNode.Parse(Text(await client.CallToolAsync("find_wpf_elements", new Dictionary<string, object?> { ["processId"] = processId, ["query"] = "NavCollectionBtn" })))!, "NavCollectionBtn") });
@@ -350,6 +390,9 @@ public sealed class IntegrationTests
             }
         }
     }
+
+    private static string BuildConfiguration => new DirectoryInfo(AppContext.BaseDirectory).Parent?.Name
+        ?? throw new InvalidOperationException($"Could not determine build configuration from '{AppContext.BaseDirectory}'.");
 
     private static string Text(CallToolResult result) => Assert.IsType<TextContentBlock>(result.Content[0]).Text;
 

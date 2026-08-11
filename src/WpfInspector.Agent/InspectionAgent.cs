@@ -3,6 +3,7 @@ using System.Collections;
 using System.IO;
 using System.IO.Pipes;
 using System.Security.Cryptography;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
@@ -26,6 +27,8 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
     private const string InspectionTitlePrefix = "[AI inspection] ";
     private readonly CancellationTokenSource stop = new();
     private readonly Dictionary<Window, string> originalTitles = [];
+    private static readonly MethodInfo ButtonBaseOnClickMethod = typeof(ButtonBase).GetMethod("OnClick", BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new InvalidOperationException("WPF ButtonBase.OnClick could not be resolved.");
     private DispatcherTimer? windowMarkerTimer;
 
     internal void Start()
@@ -111,7 +114,7 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
                 "bindings" => await dispatcher.InvokeAsync(() => DescribeBindings(request.Arguments)),
                 "interactive_elements" => await dispatcher.InvokeAsync(() => DescribeInteractiveElements(request.Arguments)),
                 "surfaces" => await dispatcher.InvokeAsync(DescribeSurfaces),
-                "interact" => await dispatcher.InvokeAsync(() => Interact(request.Arguments)),
+                "interact" => await InteractAsync(request.Arguments),
                 "wait_for_state" => await WaitForStateAsync(request.Arguments),
                 "run_workflow" => await RunWorkflowAsync(request.Arguments),
                 "stop" => await dispatcher.InvokeAsync(() => { Stop(); return new { stopped = true }; }),
@@ -127,6 +130,7 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
 
     private object DescribeRoots() => new
     {
+        uiRevision = GetUiRevision(),
         windows = Application.Current.Windows.Cast<Window>().Select((window, index) => new
         {
             windowIndex = index,
@@ -195,7 +199,17 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
         presentationRoots = PresentationSource.CurrentSources.Cast<PresentationSource>().Select(source => source.RootVisual).Where(root => root is not null).Select(root => new { type = root!.GetType().FullName, isPopup = root.GetType().Name.Contains("Popup", StringComparison.OrdinalIgnoreCase) }).ToArray()
     };
 
-    private object Interact(JsonElement? arguments)
+    // WPF controls, including Wpf.Ui.NavigationView, can queue their visual state
+    // transition after an input handler returns.  Do not report the pre-transition
+    // tree as the result of a successful semantic interaction.
+    private async Task<object> InteractAsync(JsonElement? arguments)
+    {
+        var interaction = await dispatcher.InvokeAsync(() => Interact(arguments), DispatcherPriority.Normal);
+        await dispatcher.InvokeAsync(static () => { }, DispatcherPriority.ApplicationIdle);
+        return await dispatcher.InvokeAsync(() => DescribeInteraction(interaction), DispatcherPriority.ApplicationIdle);
+    }
+
+    private Interaction Interact(JsonElement? arguments)
     {
         ValidateExpectedRevision(arguments);
         var (element, id) = ResolveLocator(arguments);
@@ -210,6 +224,7 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
             case "settext": SetText(element, value ?? string.Empty); break;
             case "setrangevalue": SetRangeValue(element, value); break;
             case "toggle": Toggle(element, value); break;
+            case "scroll": Scroll(element, value); break;
             case "setdate": if (element is DatePicker datePicker && DateTime.TryParse(value, out var date)) datePicker.SelectedDate = date; else throw new InvalidOperationException("setDate requires a DatePicker and ISO date value."); break;
             case "focus": if (element is UIElement focusable && focusable.Focusable) focusable.Focus(); else throw new InvalidOperationException("focus requires a focusable UIElement."); break;
             case "sendkey": SendKey(element, value); break;
@@ -225,8 +240,18 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
                 break;
             default: throw new InvalidOperationException($"Unsupported interaction action '{requestedAction}'.");
         }
-        return new { uiRevision = GetUiRevision(), nodeId = id, action, strategyUsed = action == "invoke" ? "wpf.routed-command-or-click" : "wpf.direct-control", bounds = GetBounds(element as FrameworkElement), state = GetState(element) };
+        return new Interaction(element, id, action);
     }
+
+    private object DescribeInteraction(Interaction interaction) => new
+    {
+        uiRevision = GetUiRevision(),
+        nodeId = interaction.Id,
+        action = interaction.Action,
+        strategyUsed = interaction.Action == "invoke" ? "wpf.routed-command-or-click" : "wpf.direct-control",
+        bounds = GetBounds(interaction.Element as FrameworkElement),
+        state = GetState(interaction.Element)
+    };
 
     private async Task<object> WaitForStateAsync(JsonElement? arguments)
     {
@@ -258,7 +283,7 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
             {
                 var kind = GetString(step, "kind") ?? throw new InvalidDataException("Each workflow step requires kind.");
                 object result;
-                if (kind.Equals("interact", StringComparison.OrdinalIgnoreCase)) result = await dispatcher.InvokeAsync(() => Interact(step));
+                if (kind.Equals("interact", StringComparison.OrdinalIgnoreCase)) result = await InteractAsync(step);
                 else if (kind.Equals("wait", StringComparison.OrdinalIgnoreCase)) result = await WaitForStateAsync(step);
                 else if (kind.Equals("assert", StringComparison.OrdinalIgnoreCase))
                 {
@@ -403,6 +428,10 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
             hash.Add(item.Element.GetType().FullName, StringComparer.Ordinal);
             hash.Add((item.Element as FrameworkElement)?.Name, StringComparer.Ordinal);
             hash.Add(item.Element is UIElement ui && ui.IsVisible);
+            hash.Add(item.Element is UIElement enabled && enabled.IsEnabled);
+            hash.Add(GetDisplayText(item.Element), StringComparer.Ordinal);
+            hash.Add((item.Element as ToggleButton)?.IsChecked);
+            hash.Add((item.Element as Selector)?.SelectedIndex);
             hash.Add(GetChildren(item.Element, TreeKind.Visual).Count());
         }
         return hash.ToHashCode().ToString("X8");
@@ -417,6 +446,7 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
         if (element is DatePicker) values.Add("setDate");
         if (element is RangeBase) values.Add("setRangeValue");
         if (element is ToggleButton) values.Add("toggle");
+        if (element is ScrollViewer) values.Add("scroll");
         if (element is TreeViewItem or Expander) { values.Add("expand"); values.Add("collapse"); }
         if (element is UIElement { Focusable: true }) values.Add("focus");
         if (element is UIElement) values.Add("sendKey");
@@ -455,7 +485,11 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
         isKeyboardFocused = element is UIElement focused && focused.IsKeyboardFocused,
         isChecked = element is ToggleButton toggle ? toggle.IsChecked : null,
         text = element is TextBox textBox ? textBox.Text : GetDisplayText(element),
-        value = element is RangeBase range ? (double?)range.Value : null
+        value = element is RangeBase range ? (double?)range.Value : null,
+        verticalOffset = element is ScrollViewer verticalScroll ? (double?)verticalScroll.VerticalOffset : null,
+        horizontalOffset = element is ScrollViewer horizontalScroll ? (double?)horizontalScroll.HorizontalOffset : null,
+        scrollableHeight = element is ScrollViewer verticalExtent ? (double?)verticalExtent.ScrollableHeight : null,
+        scrollableWidth = element is ScrollViewer horizontalExtent ? (double?)horizontalExtent.ScrollableWidth : null
     };
 
     private static void Invoke(DependencyObject element)
@@ -465,11 +499,17 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
             if (!command.CanExecute(source.CommandParameter)) throw new InvalidOperationException("The target command cannot execute.");
             command.Execute(source.CommandParameter); return;
         }
+        // ButtonBase-derived controls can put essential behavior in their OnClick
+        // override. Wpf.Ui.NavigationViewItem is one example: merely raising its
+        // Click routed event skips its navigation activation path. Invoke the
+        // protected virtual method so semantic invocation has the same control
+        // behavior as a normal click, without moving the real mouse.
+        if (element is ButtonBase button)
+        {
+            ButtonBaseOnClickMethod.Invoke(button, null);
+            return;
+        }
         if (GetPeer(element)?.GetPattern(PatternInterface.Invoke) is IInvokeProvider invoke) { invoke.Invoke(); return; }
-        // RaiseEvent is only a compatibility fallback: it bypasses ButtonBase.OnClick,
-        // so it cannot be the primary path for controls whose command is where their
-        // behavior lives.
-        if (element is ButtonBase button) { button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent)); return; }
         if (element is MenuItem menu) { menu.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent)); return; }
         throw new InvalidOperationException("invoke requires a button, menu item, command source, or UI Automation invoke provider.");
     }
@@ -485,6 +525,49 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
         var source = PresentationSource.FromVisual(ui as Visual) ?? throw new InvalidOperationException("The target is not connected to a presentation source.");
         ui.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, key) { RoutedEvent = Keyboard.KeyDownEvent });
         ui.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, key) { RoutedEvent = Keyboard.KeyUpEvent });
+    }
+
+    private static void Scroll(DependencyObject element, string? value)
+    {
+        if (element is not ScrollViewer scrollViewer)
+            throw new InvalidOperationException("scroll requires a ScrollViewer.");
+
+        switch (value?.Trim().ToLowerInvariant())
+        {
+            case "lineup": scrollViewer.LineUp(); return;
+            case "linedown": scrollViewer.LineDown(); return;
+            case "lineleft": scrollViewer.LineLeft(); return;
+            case "lineright": scrollViewer.LineRight(); return;
+            case "pageup": scrollViewer.PageUp(); return;
+            case "pagedown": scrollViewer.PageDown(); return;
+            case "pageleft": scrollViewer.PageLeft(); return;
+            case "pageright": scrollViewer.PageRight(); return;
+            case "top": scrollViewer.ScrollToTop(); return;
+            case "bottom": scrollViewer.ScrollToBottom(); return;
+            case "left": scrollViewer.ScrollToLeftEnd(); return;
+            case "right": scrollViewer.ScrollToRightEnd(); return;
+        }
+
+        if (string.IsNullOrWhiteSpace(value))
+            throw new InvalidOperationException("scroll requires a direction: lineUp, lineDown, pageUp, pageDown, top, bottom, left, or right.");
+
+        var segments = value.Split(':', 2, StringSplitOptions.TrimEntries);
+        if (segments.Length == 2 && double.TryParse(segments[1], out var offset))
+        {
+            if (segments[0].Equals("vertical", StringComparison.OrdinalIgnoreCase))
+            {
+                scrollViewer.ScrollToVerticalOffset(Math.Clamp(offset, 0, scrollViewer.ScrollableHeight));
+                return;
+            }
+
+            if (segments[0].Equals("horizontal", StringComparison.OrdinalIgnoreCase))
+            {
+                scrollViewer.ScrollToHorizontalOffset(Math.Clamp(offset, 0, scrollViewer.ScrollableWidth));
+                return;
+            }
+        }
+
+        throw new InvalidOperationException("scroll value must be a direction or an absolute offset such as 'vertical:240'.");
     }
 
     private static void SetText(DependencyObject element, string value)
@@ -683,6 +766,7 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
     }
 
     private sealed record Request(string? Secret, string? Operation, JsonElement? Arguments);
+    private sealed record Interaction(DependencyObject Element, string Id, string Action);
     private enum TreeKind { Visual, Logical }
 
     private static void Log(string message)

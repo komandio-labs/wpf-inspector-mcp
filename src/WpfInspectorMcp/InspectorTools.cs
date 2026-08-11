@@ -125,7 +125,7 @@ public sealed class InspectorTools
     public static Task<CallToolResult> GetWpfSurfaces(int processId, CancellationToken cancellationToken = default) =>
         RequestAgentAsync(processId, "surfaces", null, cancellationToken);
 
-    [McpServerTool, Description("Performs a semantic action on a managed WPF element. Use nodeId or locator (automationId, name, or query). Supported actions: auto, invoke, select, setText, setRangeValue, toggle, focus. This changes application state; require explicit user confirmation immediately before calling it.")]
+    [McpServerTool, Description("Performs a semantic action on a managed WPF element. Use nodeId or locator (automationId, name, or query). Supported actions: auto, invoke, select, setText, setRangeValue, toggle, focus, sendKey, expand, collapse, scroll. For ScrollViewer, scroll accepts lineUp, lineDown, pageUp, pageDown, top, bottom, left, right, or an absolute vertical:<offset>/horizontal:<offset>. This changes application state; require explicit user confirmation immediately before calling it.")]
     public static Task<CallToolResult> InteractWithWpfElement(int processId, string action = "auto", string? nodeId = null, string? automationId = null, string? name = null, string? query = null, string? value = null, string? expectedRevision = null, CancellationToken cancellationToken = default) =>
         RequestAgentAsync(processId, "interact", new { action, nodeId, locator = new { automationId, name, query }, value, expectedRevision }, cancellationToken);
 

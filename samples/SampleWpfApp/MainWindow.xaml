@@ -35,6 +35,17 @@
                     <ui:Button x:Name="NavCollectionBtn" AutomationProperties.AutomationId="NavCollectionBtn" Content="📚 Project Collection" Appearance="Secondary" Height="38" HorizontalAlignment="Stretch" Margin="0,0,0,8" Click="NavCollection_Click"/>
                     <ui:Button x:Name="NavSettingsBtn" AutomationProperties.AutomationId="NavSettingsBtn" Content="⚙️ Settings &amp; Configuration" Appearance="Secondary" Height="38" HorizontalAlignment="Stretch" Margin="0,0,0,16" Click="NavSettings_Click"/>
 
+                    <!-- Exercises semantic invocation of WPF-UI NavigationViewItem.
+                         Its state change occurs in OnClick, not in a Click handler. -->
+                    <local:SemanticNavigationItem x:Name="SemanticNavigationItem"
+                                                  AutomationProperties.AutomationId="SemanticNavigationItem"
+                                                  Content="Semantic Navigation Item"
+                                                  Margin="0,0,0,4"/>
+                    <TextBlock x:Name="SemanticNavigationCount"
+                               AutomationProperties.AutomationId="SemanticNavigationCount"
+                               Text="{Binding ElementName=SemanticNavigationItem, Path=InvocationCount}"
+                               Margin="8,0,0,16"/>
+
                     <Separator Margin="0,0,0,16"/>
 
                     <TextBlock Text="MODAL CONTROLS" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="8,0,0,8"/>
@@ -160,7 +171,7 @@
 
                 <!-- View 3: Settings View -->
                 <Grid x:Name="SettingsView" Visibility="Collapsed">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ScrollViewer x:Name="SettingsScrollViewer" AutomationProperties.AutomationId="SettingsScrollViewer" VerticalScrollBarVisibility="Auto">
                     <StackPanel>
                         <TextBlock Text="Application Settings" FontSize="20" FontWeight="Bold" Margin="0,0,0,16"/>
                         <ui:TextBox x:Name="SampleTextInput" AutomationProperties.AutomationId="SampleTextInput" PlaceholderText="Enter a sample value..." Height="38" Margin="0,0,0,16"/>

@@ -8,6 +8,24 @@ namespace SampleWpfApp;
 
 public record CollectionItem(string Title, string Description, string ActionId);
 
+public sealed class SemanticNavigationItem : NavigationViewItem
+{
+    public static readonly DependencyProperty InvocationCountProperty = DependencyProperty.Register(
+        nameof(InvocationCount), typeof(int), typeof(SemanticNavigationItem), new PropertyMetadata(0));
+
+    public int InvocationCount
+    {
+        get => (int)GetValue(InvocationCountProperty);
+        private set => SetValue(InvocationCountProperty, value);
+    }
+
+    protected override void OnClick()
+    {
+        InvocationCount++;
+        base.OnClick();
+    }
+}
+
 public partial class MainWindow : FluentWindow
 {
     public ObservableCollection<CollectionItem> CollectionItems { get; } = new()
