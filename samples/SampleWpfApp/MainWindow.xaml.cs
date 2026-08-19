@@ -102,6 +102,37 @@ public partial class MainWindow : FluentWindow
         StatusLabel.Text = "Status: Modal Action Confirmed!";
     }
 
+    private void OpenDialogWindow_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Window
+        {
+            Title = "Modal Test Dialog",
+            Width = 350,
+            Height = 200,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Owner = this,
+            Content = new StackPanel
+            {
+                Margin = new Thickness(20),
+                Children =
+                {
+                    new System.Windows.Controls.TextBlock { Text = "Modal dialog opened with ShowDialog()", Margin = new Thickness(0, 0, 0, 16) },
+                    new System.Windows.Controls.Button
+                    {
+                        Name = "CloseModalDialogBtn",
+                        Content = "Close Dialog",
+                        Height = 32
+                    }
+                }
+            }
+        };
+        var closeBtn = (System.Windows.Controls.Button)((StackPanel)dialog.Content).Children[1];
+        System.Windows.Automation.AutomationProperties.SetAutomationId(closeBtn, "CloseModalDialogBtn");
+        closeBtn.Click += (_, _) => { dialog.DialogResult = true; dialog.Close(); };
+        var result = dialog.ShowDialog();
+        StatusLabel.Text = result == true ? "Status: Modal Dialog Confirmed" : "Status: Modal Dialog Dismissed";
+    }
+
     private void OpenDrawer_Click(object sender, RoutedEventArgs e)
     {
         TestDrawerOverlay.Visibility = Visibility.Visible;

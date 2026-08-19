@@ -50,6 +50,7 @@
 
                     <TextBlock Text="MODAL CONTROLS" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="8,0,0,8"/>
                     <ui:Button x:Name="OpenModalBtn" AutomationProperties.AutomationId="OpenModalBtn" Content="⚡ Open Test Modal" Appearance="Secondary" Height="36" HorizontalAlignment="Stretch" Margin="0,0,0,8" Click="OpenModal_Click"/>
+                    <ui:Button x:Name="OpenDialogWindowBtn" AutomationProperties.AutomationId="OpenDialogWindowBtn" Content="🗔 Open ShowDialog Window" Appearance="Secondary" Height="36" HorizontalAlignment="Stretch" Margin="0,0,0,8" Click="OpenDialogWindow_Click"/>
                     <ui:Button x:Name="OpenDrawerBtn" AutomationProperties.AutomationId="OpenDrawerBtn" Content="📜 Open History Drawer" Appearance="Secondary" Height="36" HorizontalAlignment="Stretch" Click="OpenDrawer_Click"/>
                 </StackPanel>
             </Border>

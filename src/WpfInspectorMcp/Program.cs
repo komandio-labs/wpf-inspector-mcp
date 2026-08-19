@@ -4,6 +4,8 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using WpfInspectorMcp;
 
+Win32Api.EnsureDpiAwareness();
+
 var builder = Host.CreateApplicationBuilder(args);
 
 // stdout is reserved exclusively for MCP protocol messages.

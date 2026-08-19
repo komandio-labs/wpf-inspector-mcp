@@ -14,6 +14,16 @@ internal static partial class Win32Api
     private const int SwShow = 5;
     private const uint MouseeventfLeftdown = 0x0002;
     private const uint MouseeventfLeftup = 0x0004;
+    private const int DwmwaExtendedFrameBounds = 9;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetProcessDpiAwarenessContext(nint dpiFlag);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetProcessDPIAware();
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(nint hwnd, int dwAttribute, out RECT pvAttribute, int cbAttribute);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetWindowRect(nint hWnd, out RECT lpRect);
@@ -51,9 +61,39 @@ internal static partial class Win32Api
     private delegate bool EnumWindowsProc(nint hWnd, nint lParam);
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+    internal struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
 
     internal sealed record WindowInfo(int ProcessId, string ProcessName, string Title, string ClassName, long Handle, int X, int Y, int Width, int Height);
+
+    internal static void EnsureDpiAwareness()
+    {
+        try
+        {
+            // Try DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 (-4)
+            if (!SetProcessDpiAwarenessContext((nint)(-4)))
+            {
+                SetProcessDPIAware();
+            }
+        }
+        catch { }
+    }
+
+    internal static bool GetWindowBounds(nint hWnd, out RECT rect)
+    {
+        try
+        {
+            if (DwmGetWindowAttribute(hWnd, DwmwaExtendedFrameBounds, out rect, Marshal.SizeOf<RECT>()) == 0)
+            {
+                var width = rect.Right - rect.Left;
+                var height = rect.Bottom - rect.Top;
+                if (width > 0 && height > 0)
+                    return true;
+            }
+        }
+        catch { }
+
+        return GetWindowRect(hWnd, out rect);
+    }
 
     internal static bool IsValidWindowTitleFilter(string? windowTitle) => windowTitle is null || windowTitle.Length <= 256;
 
@@ -74,10 +114,11 @@ internal static partial class Win32Api
         if (processIds.Count == 0)
             return [];
 
+        EnsureDpiAwareness();
         var windows = new List<WindowInfo>();
         EnumWindows((hWnd, _) =>
         {
-            if (!IsWindowVisible(hWnd) || !GetWindowRect(hWnd, out var rect)) return true;
+            if (!IsWindowVisible(hWnd) || !GetWindowBounds(hWnd, out var rect)) return true;
             var width = rect.Right - rect.Left;
             var height = rect.Bottom - rect.Top;
             if (width <= 50 || height <= 50) return true;
@@ -123,21 +164,68 @@ internal static partial class Win32Api
 
     internal static byte[] CaptureWindowByHandle(nint hWnd)
     {
+        EnsureDpiAwareness();
         ActivateWindow(hWnd, requireForeground: false);
-        if (!GetWindowRect(hWnd, out var rect)) throw new InvalidOperationException("Could not read the target window bounds.");
+        if (!GetWindowBounds(hWnd, out var rect)) throw new InvalidOperationException("Could not read the target window bounds.");
 
         var width = Math.Max(1, rect.Right - rect.Left);
         var height = Math.Max(1, rect.Bottom - rect.Top);
-        using var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-        using var graphics = Graphics.FromImage(bitmap);
+
+        GetWindowRect(hWnd, out var windowRect);
+        var fullWidth = Math.Max(width, windowRect.Right - windowRect.Left);
+        var fullHeight = Math.Max(height, windowRect.Bottom - windowRect.Top);
+
+        using var fullBitmap = new Bitmap(fullWidth, fullHeight, PixelFormat.Format32bppArgb);
+        using var graphics = Graphics.FromImage(fullBitmap);
         var hdc = graphics.GetHdc();
         var printed = PrintWindow(hWnd, hdc, 2); // PW_RENDERFULLCONTENT
+        if (!printed)
+            printed = PrintWindow(hWnd, hdc, 0);
         graphics.ReleaseHdc(hdc);
+
+        if (!printed)
+        {
+            try
+            {
+                graphics.CopyFromScreen(rect.Left, rect.Top, 0, 0, new Size(width, height), CopyPixelOperation.SourceCopy);
+                printed = true;
+            }
+            catch { }
+        }
+
         if (!printed) throw new InvalidOperationException("Windows could not render the target window for capture.");
 
-        using var stream = new MemoryStream();
-        bitmap.Save(stream, ImageFormat.Png);
-        return stream.ToArray();
+        Bitmap finalBitmap;
+        var disposeFinal = true;
+
+        var offsetX = Math.Max(0, rect.Left - windowRect.Left);
+        var offsetY = Math.Max(0, rect.Top - windowRect.Top);
+        if ((offsetX > 0 || offsetY > 0 || width < fullWidth || height < fullHeight) && (offsetX + width <= fullWidth && offsetY + height <= fullHeight))
+        {
+            var cropped = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(cropped))
+            {
+                g.DrawImage(fullBitmap, new Rectangle(0, 0, width, height), new Rectangle(offsetX, offsetY, width, height), GraphicsUnit.Pixel);
+            }
+            finalBitmap = cropped;
+        }
+        else
+        {
+            finalBitmap = fullBitmap;
+            disposeFinal = false;
+        }
+
+        try
+        {
+            using var stream = new MemoryStream();
+            finalBitmap.Save(stream, ImageFormat.Png);
+            return stream.ToArray();
+        }
+        finally
+        {
+            if (disposeFinal)
+                finalBitmap.Dispose();
+        }
     }
 
     internal static string ClickWindowPoint(nint hWnd, WindowInfo window, int relativeX, int relativeY)

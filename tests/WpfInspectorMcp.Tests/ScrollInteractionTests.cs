@@ -5,6 +5,7 @@ using Xunit;
 
 namespace WpfInspectorMcp.Tests;
 
+[Collection("ServerTests")]
 public sealed class ScrollInteractionTests
 {
     [Fact]

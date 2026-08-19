@@ -138,22 +138,46 @@ public sealed class InspectorTools
         RequestAgentAsync(processId, "run_workflow", new { steps }, cancellationToken);
 
     [McpServerTool, Description("Captures a visible managed-inspection window as MCP image content. This brings the app window to the foreground.")]
-    public static CallToolResult TakeInspectionScreenshot(
+    public static async Task<CallToolResult> TakeInspectionScreenshot(
         [Description("PID returned by start_wpf_inspection.")] int processId,
-        [Description("Optional case-insensitive substring that must match the window title.")] string? windowTitle = null)
+        [Description("Optional case-insensitive substring that must match the window title.")] string? windowTitle = null,
+        CancellationToken cancellationToken = default)
     {
-        if (!TryGetInspection(processId, out _)) return Error("This MCP server does not manage that inspection process.");
+        if (!TryGetInspection(processId, out var inspection)) return Error("This MCP server does not manage that inspection process.");
         if (!Win32Api.IsValidWindowTitleFilter(windowTitle)) return Error("windowTitle must be at most 256 characters.");
-        if (!Win32Api.TryFindVisibleWindow(processId, windowTitle, out var window, out var error)) return Error(error);
+
         try
         {
-            var png = Win32Api.CaptureWindowByHandle((nint)window.Handle);
+            var response = await InspectionAgentClient.RequestAsync(inspection.PipeName, inspection.Secret, "screenshot", new { windowTitle }, cancellationToken);
+            using var document = JsonDocument.Parse(response);
+            if (document.RootElement.TryGetProperty("error", out var error))
+                return Error(error.GetString() ?? "The inspection agent returned an unknown error.");
+
+            var title = document.RootElement.GetProperty("title").GetString() ?? "Window";
+            var width = document.RootElement.GetProperty("width").GetInt32();
+            var height = document.RootElement.GetProperty("height").GetInt32();
+            var pngBase64 = document.RootElement.GetProperty("pngBase64").GetString()!;
+            var png = Convert.FromBase64String(pngBase64);
+
             return new CallToolResult
             {
-                Content = [new TextContentBlock { Text = $"Captured '{window.Title}' (PID {window.ProcessId}, {window.Width}x{window.Height})." }, ImageContentBlock.FromBytes(png, "image/png")]
+                Content = [new TextContentBlock { Text = $"Captured '{title}' (PID {processId}, {width}x{height})." }, ImageContentBlock.FromBytes(png, "image/png")]
             };
         }
-        catch (Exception exception) { return Error($"Could not capture the selected window: {exception.Message}"); }
+        catch (Exception agentException)
+        {
+            if (!Win32Api.TryFindVisibleWindow(processId, windowTitle, out var window, out var error))
+                return Error($"Could not capture the selected window: {agentException.Message}. Fallback search failed: {error}");
+            try
+            {
+                var png = Win32Api.CaptureWindowByHandle((nint)window.Handle);
+                return new CallToolResult
+                {
+                    Content = [new TextContentBlock { Text = $"Captured '{window.Title}' (PID {window.ProcessId}, {window.Width}x{window.Height})." }, ImageContentBlock.FromBytes(png, "image/png")]
+                };
+            }
+            catch (Exception exception) { return Error($"Could not capture the selected window: {exception.Message}"); }
+        }
     }
 
     [McpServerTool, Description("Clicks a point inside a visible managed-inspection window. This moves the real mouse and can change application state; require explicit user confirmation immediately before calling it.")]
@@ -263,9 +287,8 @@ public sealed class InspectorTools
                 NativeInspectionInjector.Attach(process, agentPath, Path.Combine(AppContext.BaseDirectory, "WpfInspectorMcp.runtimeconfig.json"), pipeName, secret);
                 return;
             }
-            catch (InvalidOperationException exception) when (
-                exception.Message.Contains("not a running CoreCLR WPF", StringComparison.Ordinal) ||
-                exception.Message.Contains("CoreCLR host", StringComparison.Ordinal))
+            catch (Exception exception) when (
+                exception is InvalidOperationException or Win32Exception or TimeoutException)
             {
                 last = exception;
                 Thread.Sleep(150);

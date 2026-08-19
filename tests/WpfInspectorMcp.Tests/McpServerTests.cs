@@ -3,6 +3,7 @@ using Xunit;
 
 namespace WpfInspectorMcp.Tests;
 
+[Collection("ServerTests")]
 public class McpServerTests
 {
     [Fact]
@@ -34,5 +35,13 @@ public class McpServerTests
             Environment.SetEnvironmentVariable("WPF_INSPECTOR_PIPE", originalPipe);
             Environment.SetEnvironmentVariable("WPF_INSPECTOR_SECRET", originalSecret);
         }
+    }
+
+    [Fact]
+    public void DpiAwarenessAndWindowBounds_ExecuteSafely()
+    {
+        Win32Api.EnsureDpiAwareness();
+        var result = Win32Api.GetWindowBounds(nint.Zero, out var rect);
+        Assert.False(result);
     }
 }

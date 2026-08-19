@@ -7,6 +7,7 @@ using Xunit;
 
 namespace WpfInspectorMcp.Tests;
 
+[Collection("ServerTests")]
 public sealed class IntegrationTests
 {
     [Fact]
@@ -309,6 +310,19 @@ public sealed class IntegrationTests
             Assert.False(reopenModal.IsError is true, Text(reopenModal));
             var cancelModal = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "CancelModalButton", ["action"] = "invoke" });
             Assert.False(cancelModal.IsError is true, Text(cancelModal));
+
+            var openShowDialog = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "OpenDialogWindowBtn", ["action"] = "invoke" });
+            Assert.False(openShowDialog.IsError is true, Text(openShowDialog));
+            var modalWindows = await client.CallToolAsync("get_inspection_windows", new Dictionary<string, object?> { ["processId"] = processId });
+            Assert.False(modalWindows.IsError is true, Text(modalWindows));
+            Assert.Contains("Modal Test Dialog", Text(modalWindows));
+            var modalRoots = await client.CallToolAsync("get_wpf_roots", new Dictionary<string, object?> { ["processId"] = processId });
+            Assert.False(modalRoots.IsError is true, Text(modalRoots));
+            Assert.Contains("Modal Test Dialog", Text(modalRoots));
+            var closeModalDialog = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "CloseModalDialogBtn", ["action"] = "invoke" });
+            Assert.False(closeModalDialog.IsError is true, Text(closeModalDialog));
+            var modalDialogDismissed = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "StatusLabel", ["condition"] = "textEquals", ["expectedValue"] = "Status: Modal Dialog Confirmed", ["timeoutMs"] = 3000 });
+            Assert.False(modalDialogDismissed.IsError is true, Text(modalDialogDismissed));
 
             var openDrawer = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "OpenDrawerBtn", ["action"] = "invoke" });
             Assert.False(openDrawer.IsError is true, Text(openDrawer));

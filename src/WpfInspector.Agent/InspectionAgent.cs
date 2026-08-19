@@ -16,6 +16,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Media.Media3D;
 using System.Windows.Threading;
 
@@ -114,6 +115,7 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
                 "bindings" => await dispatcher.InvokeAsync(() => DescribeBindings(request.Arguments)),
                 "interactive_elements" => await dispatcher.InvokeAsync(() => DescribeInteractiveElements(request.Arguments)),
                 "surfaces" => await dispatcher.InvokeAsync(DescribeSurfaces),
+                "screenshot" => await dispatcher.InvokeAsync(() => CaptureScreenshot(request.Arguments)),
                 "interact" => await InteractAsync(request.Arguments),
                 "wait_for_state" => await WaitForStateAsync(request.Arguments),
                 "run_workflow" => await RunWorkflowAsync(request.Arguments),
@@ -199,24 +201,95 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
         presentationRoots = PresentationSource.CurrentSources.Cast<PresentationSource>().Select(source => source.RootVisual).Where(root => root is not null).Select(root => new { type = root!.GetType().FullName, isPopup = root.GetType().Name.Contains("Popup", StringComparison.OrdinalIgnoreCase) }).ToArray()
     };
 
+    private object CaptureScreenshot(JsonElement? arguments)
+    {
+        var windowTitle = GetString(arguments, "windowTitle");
+        var windows = Application.Current.Windows.Cast<Window>().Where(w => w.IsVisible).ToList();
+        if (!string.IsNullOrWhiteSpace(windowTitle))
+            windows = windows.Where(w => w.Title.Contains(windowTitle, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        if (windows.Count == 0)
+            throw new InvalidOperationException($"No visible window was found{(string.IsNullOrWhiteSpace(windowTitle) ? "." : $" matching '{windowTitle}'.")}");
+
+        var window = windows[0];
+        var dpi = VisualTreeHelper.GetDpi(window);
+        var width = (int)Math.Max(1, Math.Ceiling(window.ActualWidth * dpi.DpiScaleX));
+        var height = (int)Math.Max(1, Math.Ceiling(window.ActualHeight * dpi.DpiScaleY));
+
+        var rtb = new RenderTargetBitmap(width, height, dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
+        var drawingVisual = new DrawingVisual();
+        using (var context = drawingVisual.RenderOpen())
+        {
+            var backgroundBrush = window.TryFindResource("SolidBackgroundFillColorBaseBrush") as Brush
+                ?? window.TryFindResource("ApplicationBackgroundBrush") as Brush
+                ?? (window.Background is SolidColorBrush solidBg && solidBg != SystemColors.WindowBrush ? solidBg : new SolidColorBrush(Color.FromRgb(0x20, 0x20, 0x20)));
+
+            context.DrawRectangle(backgroundBrush, null, new Rect(0, 0, window.ActualWidth, window.ActualHeight));
+
+            var brush = new VisualBrush(window) { Stretch = Stretch.None };
+            context.DrawRectangle(brush, null, new Rect(0, 0, window.ActualWidth, window.ActualHeight));
+        }
+        rtb.Render(drawingVisual);
+
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(rtb));
+        using var stream = new MemoryStream();
+        encoder.Save(stream);
+        var pngBytes = stream.ToArray();
+
+        return new
+        {
+            title = window.Title,
+            width,
+            height,
+            pngBase64 = Convert.ToBase64String(pngBytes)
+        };
+    }
+
     // WPF controls, including Wpf.Ui.NavigationView, can queue their visual state
     // transition after an input handler returns.  Do not report the pre-transition
     // tree as the result of a successful semantic interaction.
     private async Task<object> InteractAsync(JsonElement? arguments)
     {
-        var interaction = await dispatcher.InvokeAsync(() => Interact(arguments), DispatcherPriority.Normal);
-        await dispatcher.InvokeAsync(static () => { }, DispatcherPriority.ApplicationIdle);
-        return await dispatcher.InvokeAsync(() => DescribeInteraction(interaction), DispatcherPriority.ApplicationIdle);
+        var (element, id, action, value) = await dispatcher.InvokeAsync(() =>
+        {
+            ValidateExpectedRevision(arguments);
+            var (target, targetId) = ResolveLocator(arguments);
+            var requestedAction = GetString(arguments, "action")?.Trim() ?? "auto";
+            var actionValue = GetString(arguments, "value");
+            var resolvedAction = requestedAction.Equals("auto", StringComparison.OrdinalIgnoreCase)
+                ? GetCapabilities(target).FirstOrDefault() ?? ""
+                : requestedAction;
+            if (string.IsNullOrEmpty(resolvedAction))
+                throw new InvalidOperationException("The target has no supported semantic interaction.");
+
+            return (target, targetId, resolvedAction, actionValue);
+        }, DispatcherPriority.Normal);
+
+        var actionOperation = dispatcher.BeginInvoke(DispatcherPriority.Normal, () =>
+        {
+            ExecuteAction(element, action, value);
+        });
+
+        var completed = await Task.WhenAny(actionOperation.Task, Task.Delay(150)).ConfigureAwait(false);
+        if (completed == actionOperation.Task && actionOperation.Task.IsFaulted)
+        {
+            if (actionOperation.Task.Exception?.InnerException is { } ex)
+                throw ex;
+        }
+
+        try
+        {
+            await dispatcher.InvokeAsync(static () => { }, DispatcherPriority.ApplicationIdle);
+        }
+        catch { }
+
+        var interaction = new Interaction(element, id, action);
+        return await dispatcher.InvokeAsync(() => DescribeInteraction(interaction), DispatcherPriority.Normal);
     }
 
-    private Interaction Interact(JsonElement? arguments)
+    private static void ExecuteAction(DependencyObject element, string action, string? value)
     {
-        ValidateExpectedRevision(arguments);
-        var (element, id) = ResolveLocator(arguments);
-        var requestedAction = GetString(arguments, "action")?.Trim() ?? "auto";
-        var value = GetString(arguments, "value");
-        var action = requestedAction.Equals("auto", StringComparison.OrdinalIgnoreCase) ? GetCapabilities(element).FirstOrDefault() ?? "" : requestedAction;
-        if (string.IsNullOrEmpty(action)) throw new InvalidOperationException("The target has no supported semantic interaction.");
         switch (action.ToLowerInvariant())
         {
             case "invoke": Invoke(element); break;
@@ -238,9 +311,8 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
                 else if (element is Expander expander) expander.IsExpanded = false;
                 else throw new InvalidOperationException("collapse requires a TreeViewItem or Expander.");
                 break;
-            default: throw new InvalidOperationException($"Unsupported interaction action '{requestedAction}'.");
+            default: throw new InvalidOperationException($"Unsupported interaction action '{action}'.");
         }
-        return new Interaction(element, id, action);
     }
 
     private object DescribeInteraction(Interaction interaction) => new
@@ -353,6 +425,7 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
         type = element.GetType().FullName,
         name = element is FrameworkElement frameworkElement ? frameworkElement.Name : null,
         automationId = element is FrameworkElement fe ? AutomationProperties.GetAutomationId(fe) : null,
+        title = element is Window window ? window.Title : null,
         appearance = element.GetType().GetProperty("Appearance")?.GetValue(element)?.ToString(),
         visibility = element is UIElement uiElement ? uiElement.Visibility.ToString() : null,
         text = GetDisplayText(element),
@@ -362,6 +435,7 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
 
     private static string? GetDisplayText(DependencyObject element) => element switch
     {
+        Window window => window.Title,
         TextBlock textBlock => textBlock.Text,
         TextBox textBox => textBox.Text,
         ContentControl { Content: string content } => content,
