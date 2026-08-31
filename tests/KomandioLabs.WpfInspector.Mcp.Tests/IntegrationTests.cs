@@ -3,14 +3,14 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
-using Xunit;
+using NUnit.Framework;
 
-namespace WpfInspectorMcp.Tests;
+namespace KomandioLabs.WpfInspector.Mcp.Tests;
 
-[Collection("ServerTests")]
+[NonParallelizable]
 public sealed class IntegrationTests
 {
-    [Fact]
+    [Test]
     public async Task McpServer_StartsAndEndsExplicitWpfTargetWhenConfigured()
     {
         var targetPath = Environment.GetEnvironmentVariable("WPF_INSPECTOR_VALIDATION_TARGET");
@@ -18,7 +18,7 @@ public sealed class IntegrationTests
 
         var executablePath = Path.GetFullPath(targetPath);
         Assert.True(File.Exists(executablePath), $"Validation target not found: {executablePath}");
-        var serverPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "WpfInspectorMcp", "bin", BuildConfiguration, "net9.0-windows", "WpfInspectorMcp.exe"));
+        var serverPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "KomandioLabs.WpfInspector.Mcp", "bin", BuildConfiguration, "net10.0-windows", "wpfinspectmcp.exe"));
         await using var client = await McpClient.CreateAsync(new StdioClientTransport(new StdioClientTransportOptions { Name = "configured-target-test", Command = serverPath }));
 
         var processId = 0;
@@ -42,11 +42,11 @@ public sealed class IntegrationTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task McpServer_AttachesToAndDetachesFromAnAlreadyRunningSample()
     {
-        var samplePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "samples", "SampleWpfApp", "bin", BuildConfiguration, "net9.0-windows", "SampleWpfApp.exe"));
-        var serverPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "WpfInspectorMcp", "bin", BuildConfiguration, "net9.0-windows", "WpfInspectorMcp.exe"));
+        var samplePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "samples", "KomandioLabs.WpfInspector.Sample", "bin", BuildConfiguration, "net8.0-windows", "KomandioLabs.WpfInspector.Sample.exe"));
+        var serverPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "KomandioLabs.WpfInspector.Mcp", "bin", BuildConfiguration, "net10.0-windows", "wpfinspectmcp.exe"));
         using var sample = Process.Start(new ProcessStartInfo(samplePath) { UseShellExecute = false })!;
         try
         {
@@ -63,11 +63,11 @@ public sealed class IntegrationTests
         finally { await EnsureProcessStoppedAsync(sample.Id); }
     }
 
-    [Fact]
+    [Test]
     public async Task McpServer_ClosesManagedInspectionWhenTheMcpSessionEnds()
     {
-        var samplePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "samples", "SampleWpfApp", "bin", BuildConfiguration, "net9.0-windows", "SampleWpfApp.exe"));
-        var serverPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "WpfInspectorMcp", "bin", BuildConfiguration, "net9.0-windows", "WpfInspectorMcp.exe"));
+        var samplePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "samples", "KomandioLabs.WpfInspector.Sample", "bin", BuildConfiguration, "net8.0-windows", "KomandioLabs.WpfInspector.Sample.exe"));
+        var serverPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "KomandioLabs.WpfInspector.Mcp", "bin", BuildConfiguration, "net10.0-windows", "wpfinspectmcp.exe"));
         var processId = 0;
         try
         {
@@ -87,11 +87,11 @@ public sealed class IntegrationTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task McpServer_InspectsEveryManagedWpfCapabilityAndClosesTheApp()
     {
-        var samplePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "samples", "SampleWpfApp", "bin", BuildConfiguration, "net9.0-windows", "SampleWpfApp.exe"));
-        var serverPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "WpfInspectorMcp", "bin", BuildConfiguration, "net9.0-windows", "WpfInspectorMcp.exe"));
+        var samplePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "samples", "KomandioLabs.WpfInspector.Sample", "bin", BuildConfiguration, "net8.0-windows", "KomandioLabs.WpfInspector.Sample.exe"));
+        var serverPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "KomandioLabs.WpfInspector.Mcp", "bin", BuildConfiguration, "net10.0-windows", "wpfinspectmcp.exe"));
         Assert.True(File.Exists(samplePath), $"Sample app not found: {samplePath}");
         Assert.True(File.Exists(serverPath), $"MCP server not found: {serverPath}");
 
@@ -104,7 +104,7 @@ public sealed class IntegrationTests
             "get_wpf_interactive_elements", "get_wpf_surfaces", "interact_with_wpf_element", "wait_for_wpf_state", "run_wpf_workflow",
             "take_inspection_screenshot", "click_inspection_window_point"
         })
-            Assert.Contains(expectedTool, toolNames);
+            Assert.That(toolNames, Does.Contain(expectedTool));
 
         var processId = 0;
         try
@@ -121,24 +121,24 @@ public sealed class IntegrationTests
                 if (Text(windows).Contains("[AI inspection] Sample Complex WPF-UI Application")) break;
             }
             Assert.NotNull(windows);
-            Assert.Contains("[AI inspection] Sample Complex WPF-UI Application", Text(windows));
+            Assert.That(Text(windows), Does.Contain("[AI inspection] Sample Complex WPF-UI Application"));
 
             var surfaces = await client.CallToolAsync("get_wpf_surfaces", new Dictionary<string, object?> { ["processId"] = processId });
             Assert.False(surfaces.IsError is true, Text(surfaces));
-            Assert.Contains("presentationRoots", Text(surfaces));
+            Assert.That(Text(surfaces), Does.Contain("presentationRoots"));
 
             var roots = await client.CallToolAsync("get_wpf_roots", new Dictionary<string, object?> { ["processId"] = processId });
             Assert.False(roots.IsError is true, Text(roots));
-            Assert.Contains("v:0", Text(roots));
-            Assert.Contains("l:0", Text(roots));
+            Assert.That(Text(roots), Does.Contain("v:0"));
+            Assert.That(Text(roots), Does.Contain("l:0"));
 
             var visualTree = await client.CallToolAsync("get_visual_tree", new Dictionary<string, object?> { ["processId"] = processId, ["maxDepth"] = 8, ["maxChildren"] = 100 });
             Assert.False(visualTree.IsError is true, Text(visualTree));
-            Assert.Contains("SampleWpfApp.MainWindow", Text(visualTree));
+            Assert.That(Text(visualTree), Does.Contain("KomandioLabs.WpfInspector.Sample.MainWindow"));
 
             var logicalTree = await client.CallToolAsync("get_logical_tree", new Dictionary<string, object?> { ["processId"] = processId, ["maxDepth"] = 8, ["maxChildren"] = 100 });
             Assert.False(logicalTree.IsError is true, Text(logicalTree));
-            Assert.Contains("logical", Text(logicalTree));
+            Assert.That(Text(logicalTree), Does.Contain("logical"));
 
             var find = await client.CallToolAsync("find_wpf_elements", new Dictionary<string, object?> { ["processId"] = processId, ["query"] = "SpeedReadout", ["tree"] = "visual" });
             Assert.False(find.IsError is true, Text(find));
@@ -147,23 +147,23 @@ public sealed class IntegrationTests
 
             var element = await client.CallToolAsync("get_wpf_element_details", new Dictionary<string, object?> { ["processId"] = processId, ["nodeId"] = speedReadoutId });
             Assert.False(element.IsError is true, Text(element));
-            Assert.Contains("SpeedReadout", Text(element));
-            Assert.Contains("Value", Text(element));
+            Assert.That(Text(element), Does.Contain("SpeedReadout"));
+            Assert.That(Text(element), Does.Contain("Value"));
 
             var bindings = await client.CallToolAsync("get_wpf_bindings", new Dictionary<string, object?> { ["processId"] = processId, ["nodeId"] = speedReadoutId });
             Assert.False(bindings.IsError is true, Text(bindings));
-            Assert.Contains("Text", Text(bindings));
-            Assert.Contains("Value", Text(bindings));
+            Assert.That(Text(bindings), Does.Contain("Text"));
+            Assert.That(Text(bindings), Does.Contain("Value"));
 
             var interactive = await client.CallToolAsync("get_wpf_interactive_elements", new Dictionary<string, object?> { ["processId"] = processId, ["query"] = "NavCollectionBtn" });
             Assert.False(interactive.IsError is true, Text(interactive));
-            Assert.Contains("invoke", Text(interactive));
+            Assert.That(Text(interactive), Does.Contain("invoke"));
 
             var collectionDetails = await client.CallToolAsync("get_wpf_element_details", new Dictionary<string, object?> { ["processId"] = processId, ["nodeId"] = FindMatchId(JsonNode.Parse(Text(await client.CallToolAsync("find_wpf_elements", new Dictionary<string, object?> { ["processId"] = processId, ["query"] = "NavCollectionBtn" })))!, "NavCollectionBtn") });
             Assert.False(collectionDetails.IsError is true, Text(collectionDetails));
-            Assert.Contains("windowFrame", Text(collectionDetails));
-            Assert.Contains("isEnabled", Text(collectionDetails));
-            Assert.Contains("invoke", Text(collectionDetails));
+            Assert.That(Text(collectionDetails), Does.Contain("windowFrame"));
+            Assert.That(Text(collectionDetails), Does.Contain("isEnabled"));
+            Assert.That(Text(collectionDetails), Does.Contain("invoke"));
 
             var invokeCollection = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "NavCollectionBtn", ["action"] = "invoke" });
             Assert.False(invokeCollection.IsError is true, Text(invokeCollection));
@@ -172,15 +172,15 @@ public sealed class IntegrationTests
             var invokeSemanticNavigation = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "SemanticNavigationItem", ["action"] = "invoke" });
             Assert.False(invokeSemanticNavigation.IsError is true, Text(invokeSemanticNavigation));
             var revisionAfterSemanticNavigation = JsonNode.Parse(Text(invokeSemanticNavigation))!["uiRevision"]!.GetValue<string>();
-            Assert.NotEqual(revisionBeforeSemanticNavigation, revisionAfterSemanticNavigation);
+            Assert.That(revisionAfterSemanticNavigation, Is.Not.EqualTo(revisionBeforeSemanticNavigation));
             var semanticNavigationInvoked = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "SemanticNavigationCount", ["condition"] = "textEquals", ["expectedValue"] = "1", ["timeoutMs"] = 3000 });
             Assert.False(semanticNavigationInvoked.IsError is true, Text(semanticNavigationInvoked));
             var collectionVisible = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["query"] = "Collection Workspace", ["condition"] = "visible", ["timeoutMs"] = 3000 });
             Assert.False(collectionVisible.IsError is true, Text(collectionVisible));
             var activeCollection = await client.CallToolAsync("get_wpf_element_details", new Dictionary<string, object?> { ["processId"] = processId, ["nodeId"] = FindMatchId(JsonNode.Parse(Text(await client.CallToolAsync("find_wpf_elements", new Dictionary<string, object?> { ["processId"] = processId, ["query"] = "NavCollectionBtn" })))!, "NavCollectionBtn") });
-            Assert.Contains("Primary", Text(activeCollection));
+            Assert.That(Text(activeCollection), Does.Contain("Primary"));
             var inactiveDashboard = await client.CallToolAsync("get_wpf_element_details", new Dictionary<string, object?> { ["processId"] = processId, ["nodeId"] = FindMatchId(JsonNode.Parse(Text(await client.CallToolAsync("find_wpf_elements", new Dictionary<string, object?> { ["processId"] = processId, ["query"] = "NavDashboardBtn" })))!, "NavDashboardBtn") });
-            Assert.Contains("Secondary", Text(inactiveDashboard));
+            Assert.That(Text(inactiveDashboard), Does.Contain("Secondary"));
             var selectCollection = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "CollectionListView", ["action"] = "select", ["value"] = "Quarterly Planning" });
             Assert.False(selectCollection.IsError is true, Text(selectCollection));
             foreach (var (actionId, title) in new[]
@@ -209,7 +209,7 @@ public sealed class IntegrationTests
             var settingsExists = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "ProfileList", ["condition"] = "exists", ["timeoutMs"] = 3000 });
             Assert.False(settingsExists.IsError is true, Text(settingsExists));
             var activeSettings = await client.CallToolAsync("get_wpf_element_details", new Dictionary<string, object?> { ["processId"] = processId, ["nodeId"] = FindMatchId(JsonNode.Parse(Text(await client.CallToolAsync("find_wpf_elements", new Dictionary<string, object?> { ["processId"] = processId, ["query"] = "NavSettingsBtn" })))!, "NavSettingsBtn") });
-            Assert.Contains("Primary", Text(activeSettings));
+            Assert.That(Text(activeSettings), Does.Contain("Primary"));
             var resetEnabled = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "ResetFormButton", ["condition"] = "enabled", ["timeoutMs"] = 3000 });
             Assert.False(resetEnabled.IsError is true, Text(resetEnabled));
             var disabledAction = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "DisabledActionButton", ["condition"] = "disabled", ["timeoutMs"] = 3000 });
@@ -222,7 +222,7 @@ public sealed class IntegrationTests
             Assert.False(setText.IsError is true, Text(setText));
             var setName = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "NameInput", ["action"] = "setText", ["value"] = "Grace Hopper" });
             Assert.False(setName.IsError is true, Text(setName));
-            Assert.Contains("Grace Hopper", Text(setName));
+            Assert.That(Text(setName), Does.Contain("Grace Hopper"));
             var setNotes = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "NotesInput", ["action"] = "setText", ["value"] = "First line\nSecond line" });
             Assert.False(setNotes.IsError is true, Text(setNotes));
             var setSecret = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "SecretInput", ["action"] = "setText", ["value"] = "test-secret" });
@@ -294,7 +294,7 @@ public sealed class IntegrationTests
             // safe rejection path in this unattended integration suite.
             var toggle = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "PerfToggle", ["action"] = "toggle", ["value"] = "false" });
             Assert.False(toggle.IsError is true, Text(toggle));
-            Assert.Contains("isChecked", Text(toggle));
+            Assert.That(Text(toggle), Does.Contain("isChecked"));
             var toggleState = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "PerfToggle", ["condition"] = "checked", ["expectedValue"] = "False" });
             Assert.False(toggleState.IsError is true, Text(toggleState));
 
@@ -315,10 +315,10 @@ public sealed class IntegrationTests
             Assert.False(openShowDialog.IsError is true, Text(openShowDialog));
             var modalWindows = await client.CallToolAsync("get_inspection_windows", new Dictionary<string, object?> { ["processId"] = processId });
             Assert.False(modalWindows.IsError is true, Text(modalWindows));
-            Assert.Contains("Modal Test Dialog", Text(modalWindows));
+            Assert.That(Text(modalWindows), Does.Contain("Modal Test Dialog"));
             var modalRoots = await client.CallToolAsync("get_wpf_roots", new Dictionary<string, object?> { ["processId"] = processId });
             Assert.False(modalRoots.IsError is true, Text(modalRoots));
-            Assert.Contains("Modal Test Dialog", Text(modalRoots));
+            Assert.That(Text(modalRoots), Does.Contain("Modal Test Dialog"));
             var closeModalDialog = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "CloseModalDialogBtn", ["action"] = "invoke" });
             Assert.False(closeModalDialog.IsError is true, Text(closeModalDialog));
             var modalDialogDismissed = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "StatusLabel", ["condition"] = "textEquals", ["expectedValue"] = "Status: Modal Dialog Confirmed", ["timeoutMs"] = 3000 });
@@ -337,7 +337,7 @@ public sealed class IntegrationTests
             Assert.False(openPopup.IsError is true, Text(openPopup));
             var popupSurfaces = await client.CallToolAsync("get_wpf_surfaces", new Dictionary<string, object?> { ["processId"] = processId });
             Assert.False(popupSurfaces.IsError is true, Text(popupSurfaces));
-            Assert.Contains("isPopup", Text(popupSurfaces));
+            Assert.That(Text(popupSurfaces), Does.Contain("isPopup"));
             var closePopup = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "ClosePopupButton", ["action"] = "invoke" });
             Assert.False(closePopup.IsError is true, Text(closePopup));
             var popupGone = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "ClosePopupButton", ["condition"] = "gone", ["timeoutMs"] = 3000 });
@@ -355,12 +355,12 @@ public sealed class IntegrationTests
                 """)!;
             var workflow = await client.CallToolAsync("run_wpf_workflow", new Dictionary<string, object?> { ["processId"] = processId, ["steps"] = workflowSteps });
             Assert.False(workflow.IsError is true, Text(workflow));
-            Assert.Contains("completed", Text(workflow));
+            Assert.That(Text(workflow), Does.Contain("completed"));
 
             var failedWorkflowSteps = JsonSerializer.Deserialize<JsonElement[]>("""[{ "kind": "assert", "condition": "textEquals", "locator": { "automationId": "StatusLabel" }, "expectedValue": "not the current status" }]""")!;
             var failedWorkflow = await client.CallToolAsync("run_wpf_workflow", new Dictionary<string, object?> { ["processId"] = processId, ["steps"] = failedWorkflowSteps });
             Assert.False(failedWorkflow.IsError is true, Text(failedWorkflow));
-            Assert.Contains("failedStep", Text(failedWorkflow));
+            Assert.That(Text(failedWorkflow), Does.Contain("failedStep"));
 
             var ambiguous = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["query"] = "Button", ["action"] = "focus" });
             Assert.True(ambiguous.IsError is true);
@@ -369,10 +369,12 @@ public sealed class IntegrationTests
 
             var screenshot = await client.CallToolAsync("take_inspection_screenshot", new Dictionary<string, object?> { ["processId"] = processId });
             Assert.False(screenshot.IsError is true, Text(screenshot));
-            var image = Assert.Single(screenshot.Content.OfType<ImageContentBlock>());
+            var images = screenshot.Content.OfType<ImageContentBlock>().ToArray();
+            Assert.That(images, Has.Exactly(1).Items);
+            var image = images[0];
             var png = image.DecodedData.ToArray();
             Assert.True(png.Length > 1_000);
-            Assert.Equal(new byte[] { 0x89, 0x50, 0x4E, 0x47 }, png[..4]);
+            Assert.That(png[..4], Is.EqualTo(new byte[] { 0x89, 0x50, 0x4E, 0x47 }));
             if (string.Equals(Environment.GetEnvironmentVariable("WPF_INSPECTOR_CAPTURE_SAMPLE_SCREENSHOT"), "1", StringComparison.Ordinal))
             {
                 var screenshotPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "assets", "sample-dashboard.png"));
@@ -408,7 +410,11 @@ public sealed class IntegrationTests
     private static string BuildConfiguration => new DirectoryInfo(AppContext.BaseDirectory).Parent?.Name
         ?? throw new InvalidOperationException($"Could not determine build configuration from '{AppContext.BaseDirectory}'.");
 
-    private static string Text(CallToolResult result) => Assert.IsType<TextContentBlock>(result.Content[0]).Text;
+    private static string Text(CallToolResult result)
+    {
+        Assert.That(result.Content[0], Is.TypeOf<TextContentBlock>());
+        return ((TextContentBlock)result.Content[0]).Text;
+    }
 
     private static string? FindMatchId(JsonNode response, string name)
     {

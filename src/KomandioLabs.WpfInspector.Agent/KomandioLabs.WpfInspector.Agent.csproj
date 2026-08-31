@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>KomandioLabs.WpfInspector.Agent</RootNamespace>
+    <AssemblyName>KomandioLabs.WpfInspector.Agent</AssemblyName>
+    <AssemblyTitle>Komandio Labs WPF Inspector Agent</AssemblyTitle>
+    <Authors>Komandio Labs</Authors>
+    <Company>Komandio Labs</Company>
+    <Product>Komandio Labs WPF Inspector MCP</Product>
+    <Description>In-process WPF inspection agent for Komandio Labs WPF Inspector MCP.</Description>
+    <Copyright>Copyright © 2026 Komandio Labs</Copyright>
+    <RepositoryUrl>https://github.com/komandio-labs/wpf-inspector-mcp</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+</Project>

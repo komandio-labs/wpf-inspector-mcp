@@ -14,8 +14,8 @@ extern "C" __declspec(dllexport) DWORD WINAPI WpfInspectorInject(void*)
 {
     const DWORD pid = GetCurrentProcessId();
     wchar_t mapName[128], eventName[128];
-    swprintf_s(mapName, L"Local\\WpfInspector_Inject_%lu", pid);
-    swprintf_s(eventName, L"Local\\WpfInspector_Inject_Result_%lu", pid);
+    swprintf_s(mapName, L"Local\\KomandioLabs_WpfInspector_Inject_%lu", pid);
+    swprintf_s(eventName, L"Local\\KomandioLabs_WpfInspector_Inject_Result_%lu", pid);
     int code = 100; const wchar_t* message = L"Unknown injector failure.";
     HANDLE map = OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE, mapName);
     if (map)

@@ -1,14 +1,20 @@
-Microsoft Visual Studio Solution File, Format Version 12.00
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WpfInspectorMcp", "src\WpfInspectorMcp\WpfInspectorMcp.csproj", "{83B090BD-F56D-4899-8D7F-EE47CFE188C0}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KomandioLabs.WpfInspector.Mcp", "src\KomandioLabs.WpfInspector.Mcp\KomandioLabs.WpfInspector.Mcp.csproj", "{83B090BD-F56D-4899-8D7F-EE47CFE188C0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WpfInspector.Agent", "src\WpfInspector.Agent\WpfInspector.Agent.csproj", "{AC646818-FDA2-4C37-AAF6-1EE7E39BDE3B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KomandioLabs.WpfInspector.Agent", "src\KomandioLabs.WpfInspector.Agent\KomandioLabs.WpfInspector.Agent.csproj", "{AC646818-FDA2-4C37-AAF6-1EE7E39BDE3B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SampleWpfApp", "samples\SampleWpfApp\SampleWpfApp.csproj", "{4742491C-98A8-43BA-9861-68936FF7D755}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KomandioLabs.WpfInspector.Sample", "samples\KomandioLabs.WpfInspector.Sample\KomandioLabs.WpfInspector.Sample.csproj", "{4742491C-98A8-43BA-9861-68936FF7D755}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WpfInspectorMcp.Tests", "tests\WpfInspectorMcp.Tests\WpfInspectorMcp.Tests.csproj", "{C44959EE-7BD8-44A5-8BFA-1B05FB23267E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KomandioLabs.WpfInspector.Mcp.Tests", "tests\KomandioLabs.WpfInspector.Mcp.Tests\KomandioLabs.WpfInspector.Mcp.Tests.csproj", "{C44959EE-7BD8-44A5-8BFA-1B05FB23267E}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{32FCC78F-A3F6-4D06-91F2-A8D41F87A158}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{D139A4C0-1856-460A-AD68-88C6EEBAD0F6}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{0970D710-96C8-4D45-8A76-8A45022D4102}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -32,5 +38,11 @@ Global
 		{C44959EE-7BD8-44A5-8BFA-1B05FB23267E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C44959EE-7BD8-44A5-8BFA-1B05FB23267E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C44959EE-7BD8-44A5-8BFA-1B05FB23267E}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{AC646818-FDA2-4C37-AAF6-1EE7E39BDE3B} = {32FCC78F-A3F6-4D06-91F2-A8D41F87A158}
+		{83B090BD-F56D-4899-8D7F-EE47CFE188C0} = {32FCC78F-A3F6-4D06-91F2-A8D41F87A158}
+		{C44959EE-7BD8-44A5-8BFA-1B05FB23267E} = {D139A4C0-1856-460A-AD68-88C6EEBAD0F6}
+		{4742491C-98A8-43BA-9861-68936FF7D755} = {0970D710-96C8-4D45-8A76-8A45022D4102}
 	EndGlobalSection
 EndGlobal

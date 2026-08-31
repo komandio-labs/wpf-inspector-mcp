@@ -1,18 +1,18 @@
 using System.Text.Json.Nodes;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
-using Xunit;
+using NUnit.Framework;
 
-namespace WpfInspectorMcp.Tests;
+namespace KomandioLabs.WpfInspector.Mcp.Tests;
 
-[Collection("ServerTests")]
+[NonParallelizable]
 public sealed class ScrollInteractionTests
 {
-    [Fact]
+    [Test]
     public async Task McpServer_ScrollsAScrollViewerSemantically()
     {
-        var samplePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "samples", "SampleWpfApp", "bin", BuildConfiguration, "net9.0-windows", "SampleWpfApp.exe"));
-        var serverPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "WpfInspectorMcp", "bin", BuildConfiguration, "net9.0-windows", "WpfInspectorMcp.exe"));
+        var samplePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "samples", "KomandioLabs.WpfInspector.Sample", "bin", BuildConfiguration, "net8.0-windows", "KomandioLabs.WpfInspector.Sample.exe"));
+        var serverPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "KomandioLabs.WpfInspector.Mcp", "bin", BuildConfiguration, "net10.0-windows", "wpfinspectmcp.exe"));
         await using var client = await McpClient.CreateAsync(new StdioClientTransport(new StdioClientTransportOptions { Name = "scroll-test", Command = serverPath }));
 
         var processId = 0;
@@ -32,7 +32,7 @@ public sealed class ScrollInteractionTests
             Assert.False(details.IsError is true, Text(details));
             var state = JsonNode.Parse(Text(details))!["state"]!;
             Assert.True(state["scrollableHeight"]!.GetValue<double>() > 0, Text(details));
-            Assert.Equal(state["scrollableHeight"]!.GetValue<double>(), state["verticalOffset"]!.GetValue<double>());
+            Assert.That(state["verticalOffset"]!.GetValue<double>(), Is.EqualTo(state["scrollableHeight"]!.GetValue<double>()));
         }
         finally
         {
@@ -47,5 +47,9 @@ public sealed class ScrollInteractionTests
     private static string BuildConfiguration => new DirectoryInfo(AppContext.BaseDirectory).Parent?.Name
         ?? throw new InvalidOperationException($"Could not determine build configuration from '{AppContext.BaseDirectory}'.");
 
-    private static string Text(CallToolResult result) => Assert.IsType<TextContentBlock>(result.Content[0]).Text;
+    private static string Text(CallToolResult result)
+    {
+        Assert.That(result.Content[0], Is.TypeOf<TextContentBlock>());
+        return ((TextContentBlock)result.Content[0]).Text;
+    }
 }

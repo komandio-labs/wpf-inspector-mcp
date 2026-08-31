@@ -1,6 +1,6 @@
 using System.Windows;
 
-namespace SampleWpfApp;
+namespace KomandioLabs.WpfInspector.Sample;
 
 public partial class App : Application
 {

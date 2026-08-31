@@ -6,7 +6,7 @@ using System.Text.Json;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
-namespace WpfInspectorMcp;
+namespace KomandioLabs.WpfInspector.Mcp;
 
 [McpServerToolType]
 public sealed class InspectorTools
@@ -26,7 +26,7 @@ public sealed class InspectorTools
             if (!fullPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) || !File.Exists(fullPath)) return Error("executablePath must name an existing .exe file.");
             var directory = string.IsNullOrWhiteSpace(workingDirectory) ? Path.GetDirectoryName(fullPath)! : Path.GetFullPath(workingDirectory);
             if (!Path.IsPathFullyQualified(directory) || !Directory.Exists(directory)) return Error("workingDirectory must be an existing absolute directory.");
-            var agentPath = Path.Combine(AppContext.BaseDirectory, "WpfInspector.Agent.dll");
+            var agentPath = Path.Combine(AppContext.BaseDirectory, "KomandioLabs.WpfInspector.Agent.dll");
             if (!File.Exists(agentPath)) return Error("The WPF inspection agent is not present beside the MCP server.");
 
             var pipeName = $"wpf-inspector-{Guid.NewGuid():N}";
@@ -48,11 +48,11 @@ public sealed class InspectorTools
         {
             if (Inspections.ContainsKey(processId)) return Error("This process already has a managed inspection session.");
             var process = Process.GetProcessById(processId);
-            var agentPath = Path.Combine(AppContext.BaseDirectory, "WpfInspector.Agent.dll");
+            var agentPath = Path.Combine(AppContext.BaseDirectory, "KomandioLabs.WpfInspector.Agent.dll");
             if (!File.Exists(agentPath)) return Error("The WPF inspection agent is not present beside the MCP server.");
             var pipeName = $"wpf-inspector-{Guid.NewGuid():N}";
             var secret = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
-            NativeInspectionInjector.Attach(process, agentPath, Path.Combine(AppContext.BaseDirectory, "WpfInspectorMcp.runtimeconfig.json"), pipeName, secret);
+            NativeInspectionInjector.Attach(process, agentPath, Path.Combine(AppContext.BaseDirectory, "wpfinspectmcp.runtimeconfig.json"), pipeName, secret);
             Inspections[process.Id] = new ManagedProcess(process, pipeName, secret, false);
             Log($"Attached inspection session to PID {process.Id}.");
             return Text(JsonSerializer.Serialize(new { processId = process.Id, processName = process.ProcessName, titlePrefix = "[AI inspection]" }));
@@ -243,7 +243,7 @@ public sealed class InspectorTools
         finally { inspection.Process.Dispose(); }
     }
 
-    private static void Log(string message) => Console.Error.WriteLine($"[{DateTimeOffset.UtcNow:O}] WpfInspectorMcp {message}");
+    private static void Log(string message) => Console.Error.WriteLine($"[{DateTimeOffset.UtcNow:O}] KomandioLabs.WpfInspector.Mcp {message}");
     private static CallToolResult Text(string text) => new() { Content = [new TextContentBlock { Text = text }] };
     private static CallToolResult Error(string message) => new() { IsError = true, Content = [new TextContentBlock { Text = message }] };
 
@@ -284,7 +284,7 @@ public sealed class InspectorTools
                     Thread.Sleep(100);
                     continue;
                 }
-                NativeInspectionInjector.Attach(process, agentPath, Path.Combine(AppContext.BaseDirectory, "WpfInspectorMcp.runtimeconfig.json"), pipeName, secret);
+                NativeInspectionInjector.Attach(process, agentPath, Path.Combine(AppContext.BaseDirectory, "wpfinspectmcp.runtimeconfig.json"), pipeName, secret);
                 return;
             }
             catch (Exception exception) when (

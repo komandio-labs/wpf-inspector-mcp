@@ -20,7 +20,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Media.Media3D;
 using System.Windows.Threading;
 
-namespace WpfInspector.Agent;
+namespace KomandioLabs.WpfInspector.Agent;
 
 internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, string secret)
 {
@@ -845,7 +845,7 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
 
     private static void Log(string message)
     {
-        try { File.AppendAllText(Path.Combine(Path.GetTempPath(), $"WpfInspector.Agent-{Environment.ProcessId}.log"), $"[{DateTimeOffset.UtcNow:O}] {message}{Environment.NewLine}"); }
+        try { File.AppendAllText(Path.Combine(Path.GetTempPath(), $"KomandioLabs.WpfInspector.Agent-{Environment.ProcessId}.log"), $"[{DateTimeOffset.UtcNow:O}] {message}{Environment.NewLine}"); }
         catch { }
     }
 }

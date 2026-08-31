@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 
-namespace WpfInspectorMcp;
+namespace KomandioLabs.WpfInspector.Mcp;
 
 /// <summary>Loads the trusted, server-shipped native bridge and waits for its authenticated agent setup result.</summary>
 internal static class NativeInspectionInjector
@@ -18,15 +18,15 @@ internal static class NativeInspectionInjector
     internal static void Attach(Process process, string agentPath, string runtimeConfigPath, string pipeName, string secret)
     {
         ValidateTarget(process);
-        var nativePath = Path.Combine(AppContext.BaseDirectory, "WpfInspector.NativeInjector.x64.dll");
+        var nativePath = Path.Combine(AppContext.BaseDirectory, "KomandioLabs.WpfInspector.NativeInjector.x64.dll");
         if (!File.Exists(nativePath)) throw new FileNotFoundException("The native inspector injector is not present beside the MCP server.", nativePath);
-        var mapName = $"Local\\WpfInspector_Inject_{process.Id}";
-        var eventName = $"Local\\WpfInspector_Inject_Result_{process.Id}";
+        var mapName = $"Local\\KomandioLabs_WpfInspector_Inject_{process.Id}";
+        var eventName = $"Local\\KomandioLabs_WpfInspector_Inject_Result_{process.Id}";
         using var map = MemoryMappedFile.CreateOrOpen(mapName, Capacity, MemoryMappedFileAccess.ReadWrite);
         using var view = map.CreateViewAccessor(0, Capacity, MemoryMappedFileAccess.ReadWrite);
         using var completed = new EventWaitHandle(false, EventResetMode.ManualReset, eventName);
         var sessionJson = JsonSerializer.Serialize(new { PipeName = pipeName, Secret = secret });
-        var request = Encoding.Unicode.GetBytes(string.Concat(agentPath, '\0', "WpfInspector.Agent.AgentEntryPoint", '\0', "InitializeFromInjectionArgument", '\0', sessionJson, '\0'));
+        var request = Encoding.Unicode.GetBytes(string.Concat(agentPath, '\0', "KomandioLabs.WpfInspector.Agent.AgentEntryPoint", '\0', "InitializeFromInjectionArgument", '\0', sessionJson, '\0'));
         view.Write(0, Magic); view.Write(4, Version); view.Write(8, request.Length); view.WriteArray(RequestOffset, request, 0, request.Length); view.Flush();
         var handle = OpenProcess(ProcessCreateThread | ProcessQueryInformation | ProcessVmOperation | ProcessVmRead | ProcessVmWrite, false, process.Id);
         if (handle == 0) throw Win32("Could not open the target WPF process. It must be owned by this user and not elevated.");

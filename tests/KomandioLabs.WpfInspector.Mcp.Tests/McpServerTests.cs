@@ -1,16 +1,16 @@
 using System.Diagnostics;
-using Xunit;
+using NUnit.Framework;
 
-namespace WpfInspectorMcp.Tests;
+namespace KomandioLabs.WpfInspector.Mcp.Tests;
 
-[Collection("ServerTests")]
+[NonParallelizable]
 public class McpServerTests
 {
-    [Fact]
+    [Test]
     public void WindowTitleValidation_RejectsOversizedFilters() =>
         Assert.False(Win32Api.IsValidWindowTitleFilter(new string('a', 257)));
 
-    [Fact]
+    [Test]
     public void ManagedLaunch_DoesNotPassLegacyStartupHookEnvironment()
     {
         var originalHook = Environment.GetEnvironmentVariable("DOTNET_STARTUP_HOOKS");
@@ -24,10 +24,10 @@ public class McpServerTests
 
             var info = InspectorTools.CreateTargetStartInfo("C:\\test\\target.exe", null, "C:\\test");
 
-            Assert.DoesNotContain("DOTNET_STARTUP_HOOKS", info.Environment.Keys, StringComparer.OrdinalIgnoreCase);
-            Assert.DoesNotContain("WPF_INSPECTOR_PIPE", info.Environment.Keys, StringComparer.OrdinalIgnoreCase);
-            Assert.DoesNotContain("WPF_INSPECTOR_SECRET", info.Environment.Keys, StringComparer.OrdinalIgnoreCase);
-            Assert.Equal(Environment.GetFolderPath(Environment.SpecialFolder.Windows), info.Environment["WINDIR"]);
+            Assert.That(info.Environment.Keys, Has.None.EqualTo("DOTNET_STARTUP_HOOKS").IgnoreCase);
+            Assert.That(info.Environment.Keys, Has.None.EqualTo("WPF_INSPECTOR_PIPE").IgnoreCase);
+            Assert.That(info.Environment.Keys, Has.None.EqualTo("WPF_INSPECTOR_SECRET").IgnoreCase);
+            Assert.That(info.Environment["WINDIR"], Is.EqualTo(Environment.GetFolderPath(Environment.SpecialFolder.Windows)));
         }
         finally
         {
@@ -37,7 +37,7 @@ public class McpServerTests
         }
     }
 
-    [Fact]
+    [Test]
     public void DpiAwarenessAndWindowBounds_ExecuteSafely()
     {
         Win32Api.EnsureDpiAwareness();

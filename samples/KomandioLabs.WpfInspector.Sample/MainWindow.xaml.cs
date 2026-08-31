@@ -4,7 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using Wpf.Ui.Controls;
 
-namespace SampleWpfApp;
+namespace KomandioLabs.WpfInspector.Sample;
 
 public record CollectionItem(string Title, string Description, string ActionId);
 

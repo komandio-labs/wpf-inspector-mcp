@@ -1,0 +1,87 @@
+name: Release MCP server
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build Windows x64 release
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Restore solution
+        run: dotnet restore KomandioLabs.WpfInspector.Mcp.sln
+
+      - name: Build and test
+        run: |
+          dotnet build KomandioLabs.WpfInspector.Mcp.sln --configuration Release --no-restore
+          dotnet test KomandioLabs.WpfInspector.Mcp.sln --configuration Release --no-build --no-restore
+
+      - name: Restore release runtime assets
+        run: dotnet restore src/KomandioLabs.WpfInspector.Mcp/KomandioLabs.WpfInspector.Mcp.csproj --runtime win-x64
+
+      - name: Publish self-contained MCP bundle
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:GITHUB_WORKSPACE 'artifacts\publish'
+          New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
+          dotnet publish src/KomandioLabs.WpfInspector.Mcp/KomandioLabs.WpfInspector.Mcp.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            --no-restore `
+            --output $publishDir
+
+          $requiredFiles = @(
+            'wpfinspectmcp.exe',
+            'KomandioLabs.WpfInspector.NativeInjector.x64.dll'
+          )
+          foreach ($requiredFile in $requiredFiles) {
+            if (-not (Test-Path (Join-Path $publishDir $requiredFile))) {
+              throw "Published bundle is missing $requiredFile"
+            }
+          }
+
+      - name: Package release ZIP
+        shell: pwsh
+        run: |
+          $packageName = "KomandioLabs.WpfInspector.Mcp-$env:GITHUB_REF_NAME-win-x64"
+          $packageRoot = Join-Path $env:GITHUB_WORKSPACE "artifacts\$packageName"
+          $publishDir = Join-Path $env:GITHUB_WORKSPACE 'artifacts\publish'
+          New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
+          Copy-Item (Join-Path $publishDir '*') $packageRoot -Recurse -Force
+          Copy-Item README.md, LICENSE.txt, THIRD_PARTY_NOTICES.md $packageRoot -Force
+          Compress-Archive -Path (Join-Path $packageRoot '*') `
+            -DestinationPath (Join-Path $env:GITHUB_WORKSPACE "artifacts\$packageName.zip")
+
+      - name: Create GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $packageName = "KomandioLabs.WpfInspector.Mcp-$env:GITHUB_REF_NAME-win-x64"
+          gh release create $env:GITHUB_REF_NAME `
+            (Join-Path $env:GITHUB_WORKSPACE "artifacts\$packageName.zip") `
+            --verify-tag `
+            --title "Komandio Labs WPF Inspector MCP $env:GITHUB_REF_NAME" `
+            --generate-notes

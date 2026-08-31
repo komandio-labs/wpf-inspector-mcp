@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 
-namespace WpfInspectorMcp;
+namespace KomandioLabs.WpfInspector.Mcp;
 
 internal static partial class Win32Api
 {

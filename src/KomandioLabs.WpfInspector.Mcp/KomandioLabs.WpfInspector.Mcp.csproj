@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>KomandioLabs.WpfInspector.Mcp</RootNamespace>
+    <AssemblyName>wpfinspectmcp</AssemblyName>
+    <AssemblyTitle>Komandio Labs WPF Inspector MCP</AssemblyTitle>
+    <Authors>Komandio Labs</Authors>
+    <Company>Komandio Labs</Company>
+    <Product>Komandio Labs WPF Inspector MCP</Product>
+    <Description>Local Model Context Protocol server for inspecting and validating live Windows WPF applications.</Description>
+    <Copyright>Copyright © 2026 Komandio Labs</Copyright>
+    <RepositoryUrl>https://github.com/komandio-labs/wpf-inspector-mcp</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\KomandioLabs.WpfInspector.Agent\KomandioLabs.WpfInspector.Agent.csproj" />
+    <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.9.0" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Abstractions" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\KomandioLabs.WpfInspector.NativeInjector\bin\$(Configuration)\x64\KomandioLabs.WpfInspector.NativeInjector.x64.dll"
+          Link="KomandioLabs.WpfInspector.NativeInjector.x64.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="BuildNativeInspectionInjector" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <NativeInjectorProject>$(MSBuildProjectDirectory)\..\KomandioLabs.WpfInspector.NativeInjector\KomandioLabs.WpfInspector.NativeInjector.vcxproj</NativeInjectorProject>
+      <VsWhere>$([System.Environment]::GetEnvironmentVariable('ProgramFiles(x86)'))\Microsoft Visual Studio\Installer\vswhere.exe</VsWhere>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(VsWhere)')" Text="Visual Studio Build Tools with C++ support are required to build the native inspection injector." />
+    <Exec Command="pwsh -NoProfile -ExecutionPolicy Bypass -Command &quot;&amp; (&amp; '$(VsWhere)' -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find 'MSBuild\**\Bin\MSBuild.exe') '$(NativeInjectorProject)' /t:Build /p:Configuration=$(Configuration) /p:Platform=x64 /m&quot;" />
+  </Target>
+
+</Project>

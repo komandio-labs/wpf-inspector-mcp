@@ -4,7 +4,7 @@ using System.IO.Pipes;
 using System.Text;
 using System.Text.Json;
 
-namespace WpfInspectorMcp;
+namespace KomandioLabs.WpfInspector.Mcp;
 
 internal static class InspectionAgentClient
 {
@@ -79,8 +79,8 @@ internal static class InspectionAgentClient
 
     private static void Log(string message)
     {
-        var line = $"[{DateTimeOffset.UtcNow:O}] WpfInspectorMcp.AgentIpc {message}";
+        var line = $"[{DateTimeOffset.UtcNow:O}] KomandioLabs.WpfInspector.Mcp.AgentIpc {message}";
         Console.Error.WriteLine(line);
-        try { File.AppendAllText(Path.Combine(Path.GetTempPath(), $"WpfInspectorMcp-{Environment.ProcessId}.log"), line + Environment.NewLine); } catch { }
+        try { File.AppendAllText(Path.Combine(Path.GetTempPath(), $"KomandioLabs.WpfInspector.Mcp-{Environment.ProcessId}.log"), line + Environment.NewLine); } catch { }
     }
 }

@@ -1,7 +1,7 @@
 using System.Windows;
 using System.Text.Json;
 
-namespace WpfInspector.Agent;
+namespace KomandioLabs.WpfInspector.Agent;
 
 /// <summary>Entry point loaded into a modern CoreCLR WPF process by the native bootstrapper.</summary>
 public static class AgentEntryPoint

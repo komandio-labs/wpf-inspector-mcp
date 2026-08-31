@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>KomandioLabs.WpfInspector.Mcp.Tests</RootNamespace>
+    <AssemblyName>KomandioLabs.WpfInspector.Mcp.Tests</AssemblyName>
+    <AssemblyTitle>Komandio Labs WPF Inspector MCP Tests</AssemblyTitle>
+    <Authors>Komandio Labs</Authors>
+    <Company>Komandio Labs</Company>
+    <Product>Komandio Labs WPF Inspector MCP</Product>
+    <Description>Automated tests for Komandio Labs WPF Inspector MCP.</Description>
+    <Copyright>Copyright © 2026 Komandio Labs</Copyright>
+    <RepositoryUrl>https://github.com/komandio-labs/wpf-inspector-mcp</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageReference Include="NUnit" Version="4.6.1" />
+    <PackageReference Include="NUnit.Analyzers" Version="4.14.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="6.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\KomandioLabs.WpfInspector.Mcp\KomandioLabs.WpfInspector.Mcp.csproj" />
+    <ProjectReference Include="..\..\samples\KomandioLabs.WpfInspector.Sample\KomandioLabs.WpfInspector.Sample.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>

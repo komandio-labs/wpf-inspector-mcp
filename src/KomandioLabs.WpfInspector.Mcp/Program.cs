@@ -2,7 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
-using WpfInspectorMcp;
+using KomandioLabs.WpfInspector.Mcp;
 
 Win32Api.EnsureDpiAwareness();
 

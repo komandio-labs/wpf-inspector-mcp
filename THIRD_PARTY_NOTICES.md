@@ -9,7 +9,7 @@ This tool incorporates and modifies source from
 Copyright notices and attribution from the upstream source are retained. The
 upstream source is licensed under the Microsoft Public License (MS-PL). The
 complete MS-PL text is in [LICENSE.txt](LICENSE.txt), and applies to this
-standalone `wpf-inspector-mcp` tool and its source distribution.
+standalone Komandio Labs WPF Inspector MCP tool and its source distribution.
 
 Snoop is a project name and trademark of its respective owners. This tool is
 not affiliated with or endorsed by Snoop WPF or its contributors.
