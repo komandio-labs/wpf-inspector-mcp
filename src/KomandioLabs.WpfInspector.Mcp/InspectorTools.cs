@@ -26,8 +26,7 @@ public sealed class InspectorTools
             if (!fullPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) || !File.Exists(fullPath)) return Error("executablePath must name an existing .exe file.");
             var directory = string.IsNullOrWhiteSpace(workingDirectory) ? Path.GetDirectoryName(fullPath)! : Path.GetFullPath(workingDirectory);
             if (!Path.IsPathFullyQualified(directory) || !Directory.Exists(directory)) return Error("workingDirectory must be an existing absolute directory.");
-            var agentPath = Path.Combine(AppContext.BaseDirectory, "KomandioLabs.WpfInspector.Agent.dll");
-            if (!File.Exists(agentPath)) return Error("The WPF inspection agent is not present beside the MCP server.");
+            var agentPath = RuntimeAssets.Agent;
 
             var pipeName = $"wpf-inspector-{Guid.NewGuid():N}";
             var secret = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
@@ -48,8 +47,7 @@ public sealed class InspectorTools
         {
             if (Inspections.ContainsKey(processId)) return Error("This process already has a managed inspection session.");
             var process = Process.GetProcessById(processId);
-            var agentPath = Path.Combine(AppContext.BaseDirectory, "KomandioLabs.WpfInspector.Agent.dll");
-            if (!File.Exists(agentPath)) return Error("The WPF inspection agent is not present beside the MCP server.");
+            var agentPath = RuntimeAssets.Agent;
             var pipeName = $"wpf-inspector-{Guid.NewGuid():N}";
             var secret = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
             AttachAfterWpfStarts(process, agentPath, pipeName, secret);
@@ -284,7 +282,7 @@ public sealed class InspectorTools
                     Thread.Sleep(100);
                     continue;
                 }
-                NativeInspectionInjector.Attach(process, agentPath, Path.Combine(AppContext.BaseDirectory, "wpfinspectmcp.runtimeconfig.json"), pipeName, secret);
+                NativeInspectionInjector.Attach(process, agentPath, pipeName, secret);
                 return;
             }
             catch (Exception exception) when (

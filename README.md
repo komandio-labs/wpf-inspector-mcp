@@ -80,9 +80,9 @@ This project does not ask you to trust an opaque prebuilt injector. Inspect, sca
 
 ### Download a ready-to-run release
 
-If you do not want to build the solution, download the latest [GitHub Release](https://github.com/komandio-labs/wpf-inspector-mcp/releases). Extract the `KomandioLabs.WpfInspector.Mcp-vX.Y.Z-win-x64.zip` archive and point your MCP client at `wpfinspectmcp.exe`.
+If you do not want to build the solution, download the latest [GitHub Release](https://github.com/komandio-labs/wpf-inspector-mcp/releases). Download `wpfinspectmcp-vX.Y.Z-win-x64.exe` and point your MCP client at that file. There is no extraction step.
 
-Each release is a self-contained Windows x64 bundle and includes the MCP server, managed inspection agent, native injector, runtime dependencies, and license notices. Releases are produced automatically when a version tag such as `v1.0.0` is pushed.
+Each release is a self-contained Windows x64 executable. The managed inspection agent and native injector are embedded in the executable and extracted transparently to a temporary folder only when an inspection session needs them. Releases are produced automatically when a version tag such as `v1.0.0` is pushed.
 
 ### 1. Build and test
 
@@ -98,21 +98,24 @@ The build also compiles the native x64 injector and places it beside the MCP ser
 
 ### 2. Publish the MCP server
 
-Publishing creates a folder that can be launched by an MCP client:
+Publishing creates a self-contained single executable that can be launched by an MCP client:
 
 ```powershell
 dotnet publish src/KomandioLabs.WpfInspector.Mcp/KomandioLabs.WpfInspector.Mcp.csproj `
   --configuration Release `
   --runtime win-x64 `
-  --self-contained false `
-  --output publish/wpf-inspector-mcp
+  --self-contained true `
+  -p:PublishSingleFile=true `
+  -p:IncludeNativeLibrariesForSelfExtract=true `
+  -p:EnableCompressionInSingleFile=true `
+  --output publish/wpfinspectmcp
 ```
 
-This repository currently targets the .NET 10 runtime, so the machine running the published server needs the .NET 10 Desktop Runtime unless you publish self-contained.
+The output includes `wpfinspectmcp.exe`. The machine running it does not need the .NET 10 Desktop Runtime because the published executable is self-contained.
 
 ### 3. Configure your AI coding tool
 
-Point your AI coding tool at `wpfinspectmcp.exe`. Use an absolute path. If you downloaded a release, use the executable inside the extracted release folder and keep the rest of that folder beside it. The native injector and inspection agent are included in the release bundle.
+Point your AI coding tool at `wpfinspectmcp.exe`. Use an absolute path. The release executable contains everything it needs and can be moved without carrying a separate bundle folder.
 
 The examples below use this placeholder path:
 

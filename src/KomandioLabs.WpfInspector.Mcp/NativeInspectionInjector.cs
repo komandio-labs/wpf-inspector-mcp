@@ -15,11 +15,10 @@ internal static class NativeInspectionInjector
     private const uint ProcessCreateThread = 0x0002, ProcessQueryInformation = 0x0400, ProcessVmOperation = 0x0008, ProcessVmRead = 0x0010, ProcessVmWrite = 0x0020;
     private const uint MemCommit = 0x1000, MemReserve = 0x2000, MemRelease = 0x8000, PageReadWrite = 0x04, WaitObject0 = 0, WaitTimeout = 0x102, DontResolveDllReferences = 1;
 
-    internal static void Attach(Process process, string agentPath, string runtimeConfigPath, string pipeName, string secret)
+    internal static void Attach(Process process, string agentPath, string pipeName, string secret)
     {
         ValidateTarget(process);
-        var nativePath = Path.Combine(AppContext.BaseDirectory, "KomandioLabs.WpfInspector.NativeInjector.x64.dll");
-        if (!File.Exists(nativePath)) throw new FileNotFoundException("The native inspector injector is not present beside the MCP server.", nativePath);
+        var nativePath = RuntimeAssets.NativeInjector;
         var mapName = $"Local\\KomandioLabs_WpfInspector_Inject_{process.Id}";
         var eventName = $"Local\\KomandioLabs_WpfInspector_Inject_Result_{process.Id}";
         using var map = MemoryMappedFile.CreateOrOpen(mapName, Capacity, MemoryMappedFileAccess.ReadWrite);

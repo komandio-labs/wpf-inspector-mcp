@@ -33,6 +33,13 @@
           CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(PublishSingleFile)' == 'true'">
+    <EmbeddedResource Include="..\KomandioLabs.WpfInspector.Agent\bin\$(Configuration)\net8.0-windows\KomandioLabs.WpfInspector.Agent.dll"
+                      LogicalName="WpfInspectorMcp.Agent.dll" />
+    <EmbeddedResource Include="..\KomandioLabs.WpfInspector.NativeInjector\bin\$(Configuration)\x64\KomandioLabs.WpfInspector.NativeInjector.x64.dll"
+                      LogicalName="WpfInspectorMcp.NativeInjector.x64.dll" />
+  </ItemGroup>
+
   <Target Name="BuildNativeInspectionInjector" BeforeTargets="PrepareForBuild">
     <PropertyGroup>
       <NativeInjectorProject>$(MSBuildProjectDirectory)\..\KomandioLabs.WpfInspector.NativeInjector\KomandioLabs.WpfInspector.NativeInjector.vcxproj</NativeInjectorProject>

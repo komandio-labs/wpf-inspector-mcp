@@ -40,7 +40,7 @@ jobs:
       - name: Restore release runtime assets
         run: dotnet restore src/KomandioLabs.WpfInspector.Mcp/KomandioLabs.WpfInspector.Mcp.csproj --runtime win-x64
 
-      - name: Publish self-contained MCP bundle
+      - name: Publish single-file MCP executable
         shell: pwsh
         run: |
           $publishDir = Join-Path $env:GITHUB_WORKSPACE 'artifacts\publish'
@@ -49,39 +49,32 @@ jobs:
             --configuration Release `
             --runtime win-x64 `
             --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
             --no-restore `
             --output $publishDir
 
-          $requiredFiles = @(
-            'wpfinspectmcp.exe',
-            'KomandioLabs.WpfInspector.NativeInjector.x64.dll'
-          )
-          foreach ($requiredFile in $requiredFiles) {
-            if (-not (Test-Path (Join-Path $publishDir $requiredFile))) {
-              throw "Published bundle is missing $requiredFile"
-            }
+          if (-not (Test-Path (Join-Path $publishDir 'wpfinspectmcp.exe'))) {
+            throw 'Published single-file executable is missing wpfinspectmcp.exe'
           }
 
-      - name: Package release ZIP
+      - name: Prepare release executable
         shell: pwsh
         run: |
-          $packageName = "wpfinspectmcp-$env:GITHUB_REF_NAME-win-x64"
-          $packageRoot = Join-Path $env:GITHUB_WORKSPACE "artifacts\$packageName"
           $publishDir = Join-Path $env:GITHUB_WORKSPACE 'artifacts\publish'
-          New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
-          Copy-Item (Join-Path $publishDir '*') $packageRoot -Recurse -Force
-          Copy-Item README.md, LICENSE.txt, THIRD_PARTY_NOTICES.md $packageRoot -Force
-          Compress-Archive -Path (Join-Path $packageRoot '*') `
-            -DestinationPath (Join-Path $env:GITHUB_WORKSPACE "artifacts\$packageName.zip")
+          $assetName = "wpfinspectmcp-$env:GITHUB_REF_NAME-win-x64.exe"
+          Copy-Item (Join-Path $publishDir 'wpfinspectmcp.exe') `
+            (Join-Path $env:GITHUB_WORKSPACE "artifacts\$assetName") -Force
 
       - name: Create GitHub release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $packageName = "wpfinspectmcp-$env:GITHUB_REF_NAME-win-x64"
+          $assetName = "wpfinspectmcp-$env:GITHUB_REF_NAME-win-x64.exe"
           gh release create $env:GITHUB_REF_NAME `
-            (Join-Path $env:GITHUB_WORKSPACE "artifacts\$packageName.zip") `
+            (Join-Path $env:GITHUB_WORKSPACE "artifacts\$assetName") `
             --verify-tag `
             --title "Komandio Labs WPF Inspector MCP $env:GITHUB_REF_NAME" `
             --generate-notes
