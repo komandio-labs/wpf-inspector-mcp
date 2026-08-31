@@ -52,7 +52,7 @@ public sealed class InspectorTools
             if (!File.Exists(agentPath)) return Error("The WPF inspection agent is not present beside the MCP server.");
             var pipeName = $"wpf-inspector-{Guid.NewGuid():N}";
             var secret = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
-            NativeInspectionInjector.Attach(process, agentPath, Path.Combine(AppContext.BaseDirectory, "wpfinspectmcp.runtimeconfig.json"), pipeName, secret);
+            AttachAfterWpfStarts(process, agentPath, pipeName, secret);
             Inspections[process.Id] = new ManagedProcess(process, pipeName, secret, false);
             Log($"Attached inspection session to PID {process.Id}.");
             return Text(JsonSerializer.Serialize(new { processId = process.Id, processName = process.ProcessName, titlePrefix = "[AI inspection]" }));
@@ -294,7 +294,7 @@ public sealed class InspectorTools
                 Thread.Sleep(150);
             }
         }
-        throw new InvalidOperationException("The launched application did not become an inspectable, visible CoreCLR WPF process within 15 seconds.", last);
+        throw new InvalidOperationException("The application did not become an inspectable, visible CoreCLR WPF process within 15 seconds.", last);
     }
 
     private sealed record ManagedProcess(Process Process, string PipeName, string Secret, bool OwnsProcess);
