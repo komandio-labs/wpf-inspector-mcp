@@ -259,12 +259,17 @@ Tree calls are intentionally bounded. Begin with the roots, then request a focus
 ## 📁 Repository layout
 
 ```text
-src/KomandioLabs.WpfInspector.Mcp/              MCP server and session management
-src/KomandioLabs.WpfInspector.Agent/           injected WPF inspection agent
-src/KomandioLabs.WpfInspector.NativeInjector/ temporary native CoreCLR injector
-samples/KomandioLabs.WpfInspector.Sample/     WPF-UI sample application
-tests/KomandioLabs.WpfInspector.Mcp.Tests/      unit and end-to-end tests
-docs/assets/                      README images
+.
+├── src
+│   ├── KomandioLabs.WpfInspector.Mcp/              MCP server and session management
+│   ├── KomandioLabs.WpfInspector.Agent/             injected WPF inspection agent
+│   └── KomandioLabs.WpfInspector.NativeInjector/   temporary native CoreCLR injector
+├── samples
+│   └── KomandioLabs.WpfInspector.Sample/            WPF-UI sample application
+├── tests
+│   └── KomandioLabs.WpfInspector.Mcp.Tests/         unit and end-to-end tests
+└── docs
+    └── assets/                                     README images
 ```
 
 ## 🧪 Sample application
