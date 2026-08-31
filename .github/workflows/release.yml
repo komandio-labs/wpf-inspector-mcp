@@ -65,7 +65,7 @@ jobs:
       - name: Package release ZIP
         shell: pwsh
         run: |
-          $packageName = "KomandioLabs.WpfInspector.Mcp-$env:GITHUB_REF_NAME-win-x64"
+          $packageName = "wpfinspectmcp-$env:GITHUB_REF_NAME-win-x64"
           $packageRoot = Join-Path $env:GITHUB_WORKSPACE "artifacts\$packageName"
           $publishDir = Join-Path $env:GITHUB_WORKSPACE 'artifacts\publish'
           New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
@@ -79,7 +79,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $packageName = "KomandioLabs.WpfInspector.Mcp-$env:GITHUB_REF_NAME-win-x64"
+          $packageName = "wpfinspectmcp-$env:GITHUB_REF_NAME-win-x64"
           gh release create $env:GITHUB_REF_NAME `
             (Join-Path $env:GITHUB_WORKSPACE "artifacts\$packageName.zip") `
             --verify-tag `
