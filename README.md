@@ -1,5 +1,7 @@
 # 🔎 Komandio Labs WPF Inspector MCP
 
+[![Support Komandio Labs on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/komandiolabs)
+
 > Give AI coding agents a live, in-process view of your Windows WPF application.
 
 Built by [Komandio Labs](https://www.komandio.com/), this open-source tool helps AI coding agents inspect, exercise, and validate Windows WPF applications.
@@ -262,12 +264,12 @@ Tree calls are intentionally bounded. Begin with the roots, then request a focus
 .
 ├── src
 │   ├── KomandioLabs.WpfInspector.Mcp/              MCP server and session management
-│   ├── KomandioLabs.WpfInspector.Agent/             injected WPF inspection agent
+│   ├── KomandioLabs.WpfInspector.Agent/            injected WPF inspection agent
 │   └── KomandioLabs.WpfInspector.NativeInjector/   temporary native CoreCLR injector
 ├── samples
-│   └── KomandioLabs.WpfInspector.Sample/            WPF-UI sample application
+│   └── KomandioLabs.WpfInspector.Sample/           WPF-UI sample application
 ├── tests
-│   └── KomandioLabs.WpfInspector.Mcp.Tests/         unit and end-to-end tests
+│   └── KomandioLabs.WpfInspector.Mcp.Tests/        unit and end-to-end tests
 └── docs
     └── assets/                                     README images
 ```
@@ -291,8 +293,6 @@ Issues, pull requests, and ideas are welcome. When reporting a problem, please i
 ## ☕ Support Komandio Labs
 
 I am an independent developer, and your support helps me maintain open source projects, improve documentation, publish releases, and keep building useful tools for developers and players.
-
-[![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/komandiolabs)
 
 ## 📄 License
 
