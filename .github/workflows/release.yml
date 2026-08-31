@@ -63,7 +63,7 @@ jobs:
         shell: pwsh
         run: |
           $publishDir = Join-Path $env:GITHUB_WORKSPACE 'artifacts\publish'
-          $assetName = "wpfinspectmcp-$env:GITHUB_REF_NAME-win-x64.exe"
+          $assetName = 'wpfinspectmcp.exe'
           Copy-Item (Join-Path $publishDir 'wpfinspectmcp.exe') `
             (Join-Path $env:GITHUB_WORKSPACE "artifacts\$assetName") -Force
 
@@ -72,7 +72,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $assetName = "wpfinspectmcp-$env:GITHUB_REF_NAME-win-x64.exe"
+          $assetName = 'wpfinspectmcp.exe'
           gh release create $env:GITHUB_REF_NAME `
             (Join-Path $env:GITHUB_WORKSPACE "artifacts\$assetName") `
             --verify-tag `

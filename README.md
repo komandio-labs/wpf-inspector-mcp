@@ -80,7 +80,7 @@ This project does not ask you to trust an opaque prebuilt injector. Inspect, sca
 
 ### Download a ready-to-run release
 
-If you do not want to build the solution, download the latest [GitHub Release](https://github.com/komandio-labs/wpf-inspector-mcp/releases). Download `wpfinspectmcp-vX.Y.Z-win-x64.exe` and point your MCP client at that file. There is no extraction step.
+If you do not want to build the solution, download the latest [GitHub Release](https://github.com/komandio-labs/wpf-inspector-mcp/releases). Download `wpfinspectmcp.exe` and point your MCP client at that file. There is no extraction step.
 
 Each release is a self-contained Windows x64 executable. The managed inspection agent and native injector are embedded in the executable and extracted transparently to a temporary folder only when an inspection session needs them. Releases are produced automatically when a version tag such as `v1.0.0` is pushed.
 
