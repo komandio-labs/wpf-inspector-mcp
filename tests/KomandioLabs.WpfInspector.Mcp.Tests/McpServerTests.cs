@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using NUnit.Framework;
 
 namespace KomandioLabs.WpfInspector.Mcp.Tests;
@@ -9,6 +10,21 @@ public class McpServerTests
     [Test]
     public void WindowTitleValidation_RejectsOversizedFilters() =>
         Assert.False(Win32Api.IsValidWindowTitleFilter(new string('a', 257)));
+
+    [Test]
+    public async Task InteractiveDiscovery_DefaultsToBoundedCompactResponses_AndPreservesThePriorPositionalSignature()
+    {
+        var method = typeof(InspectorTools).GetMethod(nameof(InspectorTools.GetWpfInteractiveElements), BindingFlags.Public | BindingFlags.Static);
+        Assert.That(method, Is.Not.Null);
+
+        var parameters = method!.GetParameters();
+        Assert.That(parameters.Single(parameter => parameter.Name == "maxResults").DefaultValue, Is.EqualTo(20));
+        Assert.That(parameters.Single(parameter => parameter.Name == "compact").DefaultValue, Is.True);
+        Assert.That(Array.FindIndex(parameters, parameter => parameter.Name == "cancellationToken"), Is.EqualTo(3));
+
+        var result = await InspectorTools.GetWpfInteractiveElements(1234, null, 20, CancellationToken.None);
+        Assert.That(result.IsError, Is.True);
+    }
 
     [Test]
     public void ManagedLaunch_DoesNotPassLegacyStartupHookEnvironment()

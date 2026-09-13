@@ -91,14 +91,15 @@ public sealed class InspectorTools
         CancellationToken cancellationToken = default) =>
         RequestAgentAsync(processId, "logical_tree", new { rootId, maxDepth, maxChildren }, cancellationToken);
 
-    [McpServerTool, Description("Finds live WPF elements by name, automation ID, type name, or rendered text. Returns stable v: or l: node IDs for focused tree, detail, and binding calls.")]
+    [McpServerTool, Description("Finds live WPF elements by name, automation ID, type name, or rendered text. Defaults to a compact, bounded response with stable v: or l: node IDs; set compact=false for the full legacy node payload.")]
     public static Task<CallToolResult> FindWpfElements(
         [Description("PID returned by start_wpf_inspection.")] int processId,
         [Description("Case-insensitive text to match against an element name, automation ID, type, or rendered text.")] string query,
         [Description("Tree to search: visual (default) or logical.")] string tree = "visual",
-        [Description("Maximum matches returned, from 1 through 100. Defaults to 50.")] int maxResults = 50,
-        CancellationToken cancellationToken = default) =>
-        RequestAgentAsync(processId, "find_elements", new { query, tree, maxResults }, cancellationToken);
+        [Description("Maximum matches returned, from 1 through 100. Defaults to 20.")] int maxResults = 20,
+        CancellationToken cancellationToken = default,
+        [Description("Return compact discovery fields. Set false to return the full legacy node payload.")] bool compact = true) =>
+        RequestAgentAsync(processId, "find_elements", new { query, tree, maxResults, compact }, cancellationToken);
 
     [McpServerTool, Description("Returns properties, layout, data-context type, and local bindings for a live WPF element identified by a v: or l: node ID.")]
     public static Task<CallToolResult> GetWpfElementDetails(
@@ -115,9 +116,16 @@ public sealed class InspectorTools
         CancellationToken cancellationToken = default) =>
         RequestAgentAsync(processId, "bindings", new { nodeId }, cancellationToken);
 
-    [McpServerTool, Description("Lists visible, enabled WPF controls that support semantic automation, including stable locators, bounds, and supported actions.")]
-    public static Task<CallToolResult> GetWpfInteractiveElements(int processId, string? query = null, int maxResults = 100, CancellationToken cancellationToken = default) =>
-        RequestAgentAsync(processId, "interactive_elements", new { query, maxResults }, cancellationToken);
+    [McpServerTool, Description("Lists visible, enabled WPF controls that support semantic automation. Defaults to a compact, bounded response; provide a narrow query for discovery. Unfiltered requests above 20 results require allowUnfilteredLargeResults=true. Set compact=false when the full legacy node payload is required.")]
+    public static Task<CallToolResult> GetWpfInteractiveElements(
+        int processId,
+        string? query = null,
+        int maxResults = 20,
+        CancellationToken cancellationToken = default,
+        bool compact = true,
+        bool allowUnfilteredLargeResults = false,
+        string boundsMode = "windowFrame") =>
+        RequestAgentAsync(processId, "interactive_elements", new { query, maxResults, compact, allowUnfilteredLargeResults, boundsMode }, cancellationToken);
 
     [McpServerTool, Description("Lists managed WPF windows and live presentation roots, including popup roots when WPF exposes them.")]
     public static Task<CallToolResult> GetWpfSurfaces(int processId, CancellationToken cancellationToken = default) =>

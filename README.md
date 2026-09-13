@@ -249,6 +249,51 @@ For a `ScrollViewer`, scrolling accepts directions such as `lineDown`, `pageDown
 
 Tree calls are intentionally bounded. Begin with the roots, then request a focused subtree using the returned node ID. Tree depth is limited to 8, direct children to 250, and workflows to 25 steps so a large application does not overwhelm the MCP conversation.
 
+### Token-efficient inspection
+
+Inspector results become context for the AI agent's subsequent model requests.
+For efficient investigations, use a focused discovery sequence:
+
+1. Start a session and call `get_wpf_roots` (plus `get_inspection_windows` only
+   when window identity is needed).
+2. Use `find_wpf_elements` with a specific text, `Name`, `AutomationId`, or
+   type query. Keep `maxResults` at 5–10. It defaults to a compact response
+   with at most 20 matches; set `compact=false` only for the legacy full node
+   description.
+3. Follow the returned `v:` or `l:` node ID with one focused tree, details, or
+   binding call. Keep `maxDepth` around 1–2 and `maxChildren` small unless
+   deeper structure is required.
+4. Use `get_wpf_interactive_elements` only for an intentional control-inventory
+   audit, with a narrow `query` and small `maxResults`; do not use an
+   unfiltered listing as the normal first discovery call. Its default is now a
+   compact response with at most 20 results, and unfiltered requests are capped
+   at 20 unless explicitly opted in.
+5. Batch related waits/assertions/interactions with a short
+   `run_wpf_workflow`, avoid parallel broad calls, take screenshots only for
+   visual questions, and end the session when the evidence is complete.
+
+This keeps large visual trees and unrelated controls out of later model
+requests while preserving the same live inspection capabilities.
+
+Examples of targeted discovery:
+
+```json
+{"processId":1234,"query":"SaveSettingsButton","maxResults":5}
+{"processId":1234,"query":"TextBox","maxResults":10}
+```
+
+Compact interactive results include the locator, type, text, visibility,
+bounds, and capabilities needed for the next action. By default, bounds use
+the `windowFrame` coordinate space used by `click_inspection_window_point`;
+set `boundsMode` to `windowClient`, `screen`, or `all` when needed. Add
+`"compact": false` only when a legacy full `node` description is needed.
+
+Avoid calls such as `get_wpf_interactive_elements({"processId":1234,
+"maxResults":80})` without a query. The server caps them at 20 results. An
+intentional full inventory must explicitly include
+`"allowUnfilteredLargeResults": true`; this can substantially increase model
+context.
+
 ## 🛡️ Safety model
 
 - 🔒 Inspection sessions use a fresh random named-pipe name and 256-bit session secret.

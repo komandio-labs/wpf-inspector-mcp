@@ -185,14 +185,45 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
     {
         ValidateExpectedRevision(arguments);
         var query = GetString(arguments, "query");
-        var maxResults = GetInt(arguments, "maxResults", 100, 1, 250);
-        var results = EnumerateVisualElements()
+        var requestedMaxResults = GetInt(arguments, "maxResults", 20, 1, 250);
+        var compact = GetBoolean(arguments, "compact", true);
+        var allowUnfilteredLargeResults = GetBoolean(arguments, "allowUnfilteredLargeResults", false);
+        var maxResults = string.IsNullOrWhiteSpace(query) && !allowUnfilteredLargeResults
+            ? Math.Min(requestedMaxResults, 20)
+            : requestedMaxResults;
+        var boundsMode = compact ? GetBoundsMode(arguments) : BoundsMode.All;
+        var matches = EnumerateVisualElements()
             .Where(item => item.Element is UIElement ui && ui.IsVisible && ui.IsEnabled && GetCapabilities(item.Element).Length > 0)
             .Where(item => string.IsNullOrWhiteSpace(query) || IsMatch(item.Element, query))
-            .Take(maxResults)
-            .Select(item => new { locator = Locator(item.Element, item.Id), node = Describe(item.Element, item.Id, TreeKind.Visual), bounds = GetBounds(item.Element as FrameworkElement), capabilities = GetCapabilities(item.Element) })
+            .Take(maxResults + 1)
             .ToArray();
-        return new { uiRevision = GetUiRevision(), elements = results, truncated = results.Length == maxResults };
+        var truncated = matches.Length > maxResults;
+        var results = matches.Take(maxResults)
+            .Select(item => compact
+                ? (object)new
+                {
+                    locator = Locator(item.Element, item.Id),
+                    type = item.Element.GetType().FullName,
+                    text = GetDisplayText(item.Element),
+                    visibility = item.Element is UIElement ui ? ui.Visibility.ToString() : null,
+                    bounds = GetBounds(item.Element as FrameworkElement, boundsMode),
+                    capabilities = GetCapabilities(item.Element)
+                }
+                : new { locator = Locator(item.Element, item.Id), node = Describe(item.Element, item.Id, TreeKind.Visual), bounds = GetBounds(item.Element as FrameworkElement), capabilities = GetCapabilities(item.Element) })
+            .ToArray();
+        var response = new Dictionary<string, object?>
+        {
+            ["uiRevision"] = GetUiRevision(),
+            ["elements"] = results,
+            ["truncated"] = truncated
+        };
+        if (string.IsNullOrWhiteSpace(query))
+            response["warning"] = allowUnfilteredLargeResults
+                ? "Unfiltered discovery can return many controls; use a narrow query when possible."
+                : requestedMaxResults > maxResults
+                    ? "Unfiltered discovery was capped at 20 results. Set allowUnfilteredLargeResults=true to request more, or use a narrow query."
+                    : "Unfiltered discovery is capped at 20 results; use a narrow query for smaller, more relevant results.";
+        return response;
     }
 
     private object DescribeSurfaces() => new
@@ -266,17 +297,22 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
             return (target, targetId, resolvedAction, actionValue);
         }, DispatcherPriority.Normal);
 
+        Exception? actionFailure = null;
         var actionOperation = dispatcher.BeginInvoke(DispatcherPriority.Normal, () =>
         {
-            ExecuteAction(element, action, value);
+            try
+            {
+                ExecuteAction(element, action, value);
+            }
+            catch (Exception exception)
+            {
+                actionFailure = exception;
+            }
         });
 
-        var completed = await Task.WhenAny(actionOperation.Task, Task.Delay(150)).ConfigureAwait(false);
-        if (completed == actionOperation.Task && actionOperation.Task.IsFaulted)
-        {
-            if (actionOperation.Task.Exception?.InnerException is { } ex)
-                throw ex;
-        }
+        await actionOperation.Task.ConfigureAwait(false);
+        if (actionFailure is not null)
+            throw actionFailure;
 
         try
         {
@@ -378,7 +414,8 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
         var query = GetRequiredString(arguments, "query");
         if (query.Length > 256) throw new InvalidDataException("query must be at most 256 characters.");
         var tree = string.Equals(GetString(arguments, "tree"), "logical", StringComparison.OrdinalIgnoreCase) ? TreeKind.Logical : TreeKind.Visual;
-        var maxResults = GetInt(arguments, "maxResults", 50, 1, 100);
+        var maxResults = GetInt(arguments, "maxResults", 20, 1, 100);
+        var compact = GetBoolean(arguments, "compact", true);
         const int maxNodes = 10_000;
         var matches = new List<object>();
         var pending = new Queue<(DependencyObject Element, string Id)>();
@@ -388,7 +425,7 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
         while (pending.Count > 0 && inspected++ < maxNodes && matches.Count < maxResults)
         {
             var (element, id) = pending.Dequeue();
-            if (IsMatch(element, query)) matches.Add(Describe(element, id, tree));
+            if (IsMatch(element, query)) matches.Add(compact ? DescribeDiscovery(element, id) : Describe(element, id, tree));
             foreach (var (child, index) in GetChildren(element, tree).Select((child, index) => (child, index)))
                 pending.Enqueue((child, $"{id}/{index}"));
         }
@@ -431,6 +468,16 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
         text = GetDisplayText(element),
         visualChildren = GetChildren(element, TreeKind.Visual).Count(),
         logicalChildren = GetChildren(element, TreeKind.Logical).Count()
+    };
+
+    private static object DescribeDiscovery(DependencyObject element, string id) => new
+    {
+        id,
+        type = element.GetType().FullName,
+        name = element is FrameworkElement frameworkElement ? frameworkElement.Name : null,
+        automationId = element is FrameworkElement fe ? AutomationProperties.GetAutomationId(fe) : null,
+        visibility = element is UIElement uiElement ? uiElement.Visibility.ToString() : null,
+        text = GetDisplayText(element)
     };
 
     private static string? GetDisplayText(DependencyObject element) => element switch
@@ -534,7 +581,7 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
 
     private static object Locator(DependencyObject element, string nodeId) => new { nodeId, automationId = element is FrameworkElement fe ? AutomationProperties.GetAutomationId(fe) : null, name = (element as FrameworkElement)?.Name };
 
-    private static object? GetBounds(FrameworkElement? element)
+    private static object? GetBounds(FrameworkElement? element, BoundsMode mode = BoundsMode.All)
     {
         if (element is null || !element.IsLoaded || element.ActualWidth <= 0 || element.ActualHeight <= 0) return null;
         var window = Window.GetWindow(element);
@@ -543,11 +590,15 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
         var screenTopLeft = element.PointToScreen(new Point(0, 0));
         var frame = new NativeRect();
         GetWindowRect(new WindowInteropHelper(window).Handle, out frame);
-        return new
+        var windowClient = new { x = clientTopLeft.X, y = clientTopLeft.Y, width = element.ActualWidth, height = element.ActualHeight };
+        var screen = new { x = screenTopLeft.X, y = screenTopLeft.Y, width = element.ActualWidth, height = element.ActualHeight };
+        var windowFrame = new { x = screenTopLeft.X - frame.Left, y = screenTopLeft.Y - frame.Top, width = element.ActualWidth, height = element.ActualHeight };
+        return mode switch
         {
-            windowClient = new { x = clientTopLeft.X, y = clientTopLeft.Y, width = element.ActualWidth, height = element.ActualHeight },
-            screen = new { x = screenTopLeft.X, y = screenTopLeft.Y, width = element.ActualWidth, height = element.ActualHeight },
-            windowFrame = new { x = screenTopLeft.X - frame.Left, y = screenTopLeft.Y - frame.Top, width = element.ActualWidth, height = element.ActualHeight }
+            BoundsMode.WindowClient => new { windowClient },
+            BoundsMode.Screen => new { screen },
+            BoundsMode.WindowFrame => new { windowFrame },
+            _ => new { windowClient, screen, windowFrame }
         };
     }
 
@@ -811,6 +862,20 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
             ? property.GetString()
             : null;
 
+    private static bool GetBoolean(JsonElement? arguments, string name, bool fallback) =>
+        arguments is { ValueKind: JsonValueKind.Object } value && value.TryGetProperty(name, out var property) && property.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? property.GetBoolean()
+            : fallback;
+
+    private static BoundsMode GetBoundsMode(JsonElement? arguments) => GetString(arguments, "boundsMode")?.ToLowerInvariant() switch
+    {
+        null or "windowframe" => BoundsMode.WindowFrame,
+        "windowclient" => BoundsMode.WindowClient,
+        "screen" => BoundsMode.Screen,
+        "all" => BoundsMode.All,
+        _ => throw new InvalidDataException("boundsMode must be windowFrame, windowClient, screen, or all.")
+    };
+
     private static int GetInt(JsonElement? arguments, string name, int fallback, int minimum, int maximum) =>
         arguments is { ValueKind: JsonValueKind.Object } value && value.TryGetProperty(name, out var property) && property.TryGetInt32(out var number)
             ? Math.Clamp(number, minimum, maximum)
@@ -842,6 +907,7 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
     private sealed record Request(string? Secret, string? Operation, JsonElement? Arguments);
     private sealed record Interaction(DependencyObject Element, string Id, string Action);
     private enum TreeKind { Visual, Logical }
+    private enum BoundsMode { WindowFrame, WindowClient, Screen, All }
 
     private static void Log(string message)
     {
