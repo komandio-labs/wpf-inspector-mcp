@@ -103,7 +103,7 @@ public sealed class IntegrationTests
             "start_wpf_inspection", "attach_wpf_inspection", "end_wpf_inspection", "get_inspection_windows", "get_wpf_roots",
             "get_visual_tree", "get_logical_tree", "find_wpf_elements", "get_wpf_element_details", "get_wpf_bindings",
             "get_wpf_interactive_elements", "get_wpf_surfaces", "interact_with_wpf_element", "wait_for_wpf_state", "run_wpf_workflow",
-            "take_inspection_screenshot", "click_inspection_window_point"
+            "take_inspection_screenshot", "click_inspection_window_point", "get_native_dialogs"
         })
             Assert.That(toolNames, Does.Contain(expectedTool));
 
@@ -405,17 +405,21 @@ public sealed class IntegrationTests
             var staleRevision = await client.CallToolAsync("get_wpf_element_details", new Dictionary<string, object?> { ["processId"] = processId, ["nodeId"] = dashboardButtonId, ["expectedRevision"] = "DEADBEEF" });
             Assert.True(staleRevision.IsError is true);
 
-            var screenshot = await client.CallToolAsync("take_inspection_screenshot", new Dictionary<string, object?> { ["processId"] = processId });
+            var screenshot = await client.CallToolAsync("take_inspection_screenshot", new Dictionary<string, object?> { ["processId"] = processId, ["captureMode"] = "window", ["includeChrome"] = true });
             Assert.False(screenshot.IsError is true, Text(screenshot));
+            Assert.That(Text(screenshot), Does.Contain("screen-composited window"));
             var images = screenshot.Content.OfType<ImageContentBlock>().ToArray();
             Assert.That(images, Has.Exactly(1).Items);
             var image = images[0];
             var png = image.DecodedData.ToArray();
             Assert.True(png.Length > 1_000);
             Assert.That(png[..4], Is.EqualTo(new byte[] { 0x89, 0x50, 0x4E, 0x47 }));
-            if (string.Equals(Environment.GetEnvironmentVariable("WPF_INSPECTOR_CAPTURE_SAMPLE_SCREENSHOT"), "1", StringComparison.Ordinal))
+            var screenshotOutputPath = Environment.GetEnvironmentVariable("WPF_INSPECTOR_CAPTURE_OUTPUT_PATH");
+            if (string.Equals(Environment.GetEnvironmentVariable("WPF_INSPECTOR_CAPTURE_SAMPLE_SCREENSHOT"), "1", StringComparison.Ordinal) || !string.IsNullOrWhiteSpace(screenshotOutputPath))
             {
-                var screenshotPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "assets", "sample-dashboard.png"));
+                var screenshotPath = string.IsNullOrWhiteSpace(screenshotOutputPath)
+                    ? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "assets", "sample-dashboard.png"))
+                    : Path.GetFullPath(screenshotOutputPath);
                 Directory.CreateDirectory(Path.GetDirectoryName(screenshotPath)!);
                 await File.WriteAllBytesAsync(screenshotPath, png);
             }
@@ -424,15 +428,6 @@ public sealed class IntegrationTests
             Assert.True(invalidTarget.IsError is true);
             var invalidClick = await client.CallToolAsync("click_inspection_window_point", new Dictionary<string, object?> { ["processId"] = processId, ["x"] = -1, ["y"] = 0 });
             Assert.True(invalidClick.IsError is true);
-
-            var openNativePicker = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "OpenNativeFilePickerButton", ["action"] = "invoke" });
-            Assert.False(openNativePicker.IsError is true, Text(openNativePicker));
-            var nativePickerInteraction = JsonNode.Parse(Text(openNativePicker))!;
-            Assert.That(nativePickerInteraction["awaitingChildWindow"]!.GetValue<bool>(), Is.True);
-            Assert.That(nativePickerInteraction["nativeBoundary"]!["kind"]!.GetValue<string>(), Is.EqualTo("native/non-WPF"));
-            var nativeDialogs = await client.CallToolAsync("get_native_dialogs", new Dictionary<string, object?> { ["processId"] = processId });
-            Assert.False(nativeDialogs.IsError is true, Text(nativeDialogs));
-            Assert.That(Text(nativeDialogs), Does.Contain("Choose sample ZIP"));
 
             var end = await client.CallToolAsync("end_wpf_inspection", new Dictionary<string, object?> { ["processId"] = processId });
             Assert.False(end.IsError is true, Text(end));
@@ -452,6 +447,49 @@ public sealed class IntegrationTests
                 await EnsureProcessStoppedAsync(processId);
             }
         }
+    }
+
+    [Test]
+    public async Task McpServer_DetectsNativeFilePickerAfterWpfInteraction()
+    {
+        var samplePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "samples", "KomandioLabs.WpfInspector.Sample", "bin", BuildConfiguration, "net8.0-windows", "KomandioLabs.WpfInspector.Sample.exe"));
+        var serverPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "KomandioLabs.WpfInspector.Mcp", "bin", BuildConfiguration, "net10.0-windows", "wpfinspectmcp.exe"));
+        await using var client = await McpClient.CreateAsync(new StdioClientTransport(new StdioClientTransportOptions { Name = "native-dialog-test", Command = serverPath }));
+        var processId = 0;
+        try
+        {
+            var start = await client.CallToolAsync("start_wpf_inspection", new Dictionary<string, object?> { ["executablePath"] = samplePath });
+            Assert.False(start.IsError is true, Text(start));
+            processId = JsonNode.Parse(Text(start))!["processId"]!.GetValue<int>();
+            for (var attempt = 0; attempt < 10; attempt++)
+            {
+                await Task.Delay(250);
+                var windows = await client.CallToolAsync("get_inspection_windows", new Dictionary<string, object?> { ["processId"] = processId });
+                if (Text(windows).Contains("[AI inspection] Sample Complex WPF-UI Application")) break;
+            }
+            Assert.False((await client.CallToolAsync("get_wpf_roots", new Dictionary<string, object?> { ["processId"] = processId })).IsError is true);
+
+            await DetectNativeDialogAsync(client, processId, "interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "OpenNativeFilePickerButton", ["action"] = "invoke" });
+        }
+        finally
+        {
+            if (processId != 0) await client.CallToolAsync("end_wpf_inspection", new Dictionary<string, object?> { ["processId"] = processId });
+        }
+    }
+
+    private static async Task DetectNativeDialogAsync(McpClient client, int processId, string toolName, Dictionary<string, object?> arguments)
+    {
+        var settings = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "NavSettingsBtn", ["action"] = "invoke" });
+        Assert.False(settings.IsError is true, Text(settings));
+        var ready = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "OpenNativeFilePickerButton", ["condition"] = "visible", ["timeoutMs"] = 5000 });
+        Assert.False(ready.IsError is true, Text(ready));
+        var interaction = await client.CallToolAsync(toolName, arguments);
+        Assert.False(interaction.IsError is true, Text(interaction));
+        var payload = JsonNode.Parse(Text(interaction))!;
+        Assert.That(payload["nativeBoundary"]?["kind"]?.GetValue<string>(), Is.EqualTo("native/non-WPF"));
+        var dialogs = await client.CallToolAsync("get_native_dialogs", new Dictionary<string, object?> { ["processId"] = processId });
+        Assert.False(dialogs.IsError is true, Text(dialogs));
+        Assert.That(Text(dialogs), Does.Contain("Choose sample ZIP"));
     }
 
     private static string BuildConfiguration => new DirectoryInfo(AppContext.BaseDirectory).Parent?.Name

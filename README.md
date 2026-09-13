@@ -300,15 +300,25 @@ WPF commands can open native Windows dialogs such as the Common Item file
 picker. These dialogs are outside the WPF visual and logical trees. When an
 interaction opens one, the MCP returns promptly with `awaitingChildWindow` and
 a `nativeBoundary` of `native/non-WPF`; call `get_native_dialogs` to obtain the
-title, process/window identity, bounds, and `userHandoff` capability.
+title, process/window identity, bounds, exact handle, and capabilities.
 
-The MCP deliberately does not automate native file names, Open, or Cancel.
-Use the structured handoff to ask the local user to select a file or cancel,
-then refresh WPF roots/surfaces after it closes. This requires an interactive
-desktop session; it cannot work in a non-interactive service session. Keeping
-path entry and selection user-controlled prevents an agent from accidentally
-disclosing host paths or selecting an unintended file. Do not use real mouse
-click tools to bypass this safeguard without immediate user confirmation.
+The MCP identifies the boundary after a semantic WPF interaction, workflow, or
+real inspection-window click. Native file selection is deliberately a
+structured user handoff: use the returned dialog identity to ask the local user
+to select a file or cancel, then refresh WPF roots/surfaces after it closes.
+This requires an interactive desktop session; it cannot work in a
+non-interactive service session. Keeping path entry and selection
+user-controlled prevents an agent from accidentally disclosing host paths or
+selecting an unintended file. Do not use real mouse click tools to bypass this
+safeguard without immediate user confirmation.
+
+For screenshots, `take_inspection_screenshot` accepts `captureMode`: use
+`auto` (the default) to prefer WPF rendering with a Win32 fallback, `wpf` to
+require WPF rendering, or `window` to intentionally capture the selected
+top-level window through Win32. The `window` mode works for visible native
+dialogs as well as WPF windows. Add `"includeChrome": true` with `window`
+mode to capture the visible, screen-composited non-client frame; this requires
+an interactive desktop and can include pixels outside the client area.
 
 ## 🛡️ Safety model
 
