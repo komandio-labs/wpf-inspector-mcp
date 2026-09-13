@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using ModelContextProtocol.Client;
@@ -157,7 +158,37 @@ public sealed class IntegrationTests
 
             var interactive = await client.CallToolAsync("get_wpf_interactive_elements", new Dictionary<string, object?> { ["processId"] = processId, ["query"] = "NavCollectionBtn" });
             Assert.False(interactive.IsError is true, Text(interactive));
-            Assert.That(Text(interactive), Does.Contain("invoke"));
+            var compactInteractiveText = Text(interactive);
+            var compactInteractive = JsonNode.Parse(compactInteractiveText)!;
+            Assert.That(compactInteractive["elements"]![0]!["locator"]!["automationId"]!.GetValue<string>(), Is.EqualTo("NavCollectionBtn"));
+            Assert.That(compactInteractive["elements"]![0]!["type"], Is.Not.Null);
+            Assert.That(compactInteractive["elements"]![0]!["capabilities"]!.ToJsonString(), Does.Contain("invoke"));
+            Assert.That(compactInteractive["elements"]![0]!["node"], Is.Null);
+            Assert.That(compactInteractive["warning"], Is.Null);
+            Assert.That(compactInteractive["elements"]![0]!["bounds"]!["windowFrame"], Is.Not.Null);
+            Assert.That(compactInteractive["elements"]![0]!["bounds"]!["screen"], Is.Null);
+
+            var fullInteractive = await client.CallToolAsync("get_wpf_interactive_elements", new Dictionary<string, object?>
+            {
+                ["processId"] = processId, ["query"] = "NavCollectionBtn", ["compact"] = false
+            });
+            Assert.False(fullInteractive.IsError is true, Text(fullInteractive));
+            Assert.That(Text(fullInteractive), Does.Contain("\"node\""));
+            Assert.That(JsonNode.Parse(Text(fullInteractive))!["elements"]![0]!["bounds"]!["screen"], Is.Not.Null);
+            var fullInteractiveText = Text(fullInteractive);
+            var compactBytes = Encoding.UTF8.GetByteCount(compactInteractiveText);
+            var fullBytes = Encoding.UTF8.GetByteCount(fullInteractiveText);
+            TestContext.Progress.WriteLine($"Interactive discovery response sizes: compact={compactBytes} UTF-8 bytes ({compactInteractiveText.Length} chars), full legacy={fullBytes} UTF-8 bytes ({fullInteractiveText.Length} chars).");
+            Assert.That(compactBytes, Is.LessThan(fullBytes));
+
+            var unfilteredInteractive = await client.CallToolAsync("get_wpf_interactive_elements", new Dictionary<string, object?>
+            {
+                ["processId"] = processId, ["maxResults"] = 80
+            });
+            Assert.False(unfilteredInteractive.IsError is true, Text(unfilteredInteractive));
+            var unfilteredPayload = JsonNode.Parse(Text(unfilteredInteractive))!;
+            Assert.That(unfilteredPayload["elements"]!.AsArray().Count, Is.LessThanOrEqualTo(20));
+            Assert.That(unfilteredPayload["warning"]!.GetValue<string>(), Does.Contain("allowUnfilteredLargeResults=true"));
 
             var collectionDetails = await client.CallToolAsync("get_wpf_element_details", new Dictionary<string, object?> { ["processId"] = processId, ["nodeId"] = FindMatchId(JsonNode.Parse(Text(await client.CallToolAsync("find_wpf_elements", new Dictionary<string, object?> { ["processId"] = processId, ["query"] = "NavCollectionBtn" })))!, "NavCollectionBtn") });
             Assert.False(collectionDetails.IsError is true, Text(collectionDetails));
