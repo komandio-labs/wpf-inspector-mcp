@@ -310,9 +310,23 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
             }
         });
 
+        var completed = await Task.WhenAny(actionOperation.Task, Task.Delay(200)).ConfigureAwait(false);
+        if (completed != actionOperation.Task)
+        {
+            return await dispatcher.InvokeAsync(() => new
+            {
+                uiRevision = GetUiRevision(),
+                nodeId = id,
+                action,
+                strategyUsed = "wpf.async-modal-boundary",
+                opened = true,
+                awaitingChildWindow = true,
+                childWindowDetected = DescribeChildWindow(element)
+            }, DispatcherPriority.Normal);
+        }
+
         await actionOperation.Task.ConfigureAwait(false);
-        if (actionFailure is not null)
-            throw actionFailure;
+        if (actionFailure is not null) throw actionFailure;
 
         try
         {
@@ -322,6 +336,17 @@ internal sealed class InspectionAgent(Dispatcher dispatcher, string pipeName, st
 
         var interaction = new Interaction(element, id, action);
         return await dispatcher.InvokeAsync(() => DescribeInteraction(interaction), DispatcherPriority.Normal);
+    }
+
+    private static object? DescribeChildWindow(DependencyObject element)
+    {
+        var owner = Window.GetWindow(element);
+        var ownerIndex = Application.Current.Windows.Cast<Window>().Select((window, index) => new { window, index }).FirstOrDefault(item => ReferenceEquals(item.window, owner))?.index;
+        return Application.Current.Windows.Cast<Window>()
+            .Select((window, index) => new { window, index })
+            .Where(item => item.window.IsVisible && !ReferenceEquals(item.window, owner) && (ReferenceEquals(item.window.Owner, owner) || item.window.ShowInTaskbar == false))
+            .Select(item => new { windowIndex = item.index, title = item.window.Title, isModal = item.window.Owner is not null, ownerWindowIndex = ownerIndex, ownerTitle = owner?.Title, visualRootId = $"v:{item.index}", logicalRootId = $"l:{item.index}" })
+            .FirstOrDefault();
     }
 
     private static void ExecuteAction(DependencyObject element, string action, string? value)

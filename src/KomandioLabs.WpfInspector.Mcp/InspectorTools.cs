@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -67,6 +68,17 @@ public sealed class InspectorTools
     {
         if (!TryGetInspection(processId, out _)) return Error("This MCP server does not manage that inspection process.");
         return Text(Win32Api.SerializeWindows(Win32Api.GetVisibleWindowsForProcessId(processId)));
+    }
+
+    [McpServerTool, Description("Lists visible native Windows Common Item Dialogs owned by a managed inspection process. Native dialogs are outside the WPF trees; this tool is read-only and supports a structured user handoff rather than file selection automation.")]
+    public static CallToolResult GetNativeDialogs([Description("PID returned by start_wpf_inspection.")] int processId)
+    {
+        if (!TryGetInspection(processId, out _)) return Error("This MCP server does not manage that inspection process.");
+        return Text(JsonSerializer.Serialize(new
+        {
+            boundary = "native/non-WPF",
+            dialogs = Win32Api.GetNativeDialogsForProcessId(processId).Select(NativeDialogDescription)
+        }));
     }
 
     [McpServerTool, Description("Returns the live WPF window roots for one managed AI-inspection session.")]
@@ -143,14 +155,20 @@ public sealed class InspectorTools
     public static Task<CallToolResult> RunWpfWorkflow(int processId, JsonElement[] steps, CancellationToken cancellationToken = default) =>
         RequestAgentAsync(processId, "run_workflow", new { steps }, cancellationToken);
 
-    [McpServerTool, Description("Captures a visible managed-inspection window as MCP image content. This brings the app window to the foreground.")]
+    [McpServerTool, Description("Captures a visible managed-inspection window as MCP image content. captureMode=auto prefers WPF rendering and falls back to Win32; captureMode=window always captures the selected top-level window with Win32; captureMode=wpf disables the fallback. With captureMode=window, includeChrome=true captures the visible screen-composited non-client frame. This brings the app window to the foreground.")]
     public static async Task<CallToolResult> TakeInspectionScreenshot(
         [Description("PID returned by start_wpf_inspection.")] int processId,
         [Description("Optional case-insensitive substring that must match the window title.")] string? windowTitle = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        [Description("Capture mode: auto (default), wpf, or window.")] string captureMode = "auto",
+        [Description("For captureMode=window, capture the visible screen-composited non-client frame.")] bool includeChrome = false)
     {
         if (!TryGetInspection(processId, out var inspection)) return Error("This MCP server does not manage that inspection process.");
         if (!Win32Api.IsValidWindowTitleFilter(windowTitle)) return Error("windowTitle must be at most 256 characters.");
+        if (!TryParseCaptureMode(captureMode, out var mode)) return Error("captureMode must be auto, wpf, or window.");
+
+        if (mode == CaptureMode.Window)
+            return CaptureWindow(processId, windowTitle, includeChrome);
 
         try
         {
@@ -172,22 +190,13 @@ public sealed class InspectorTools
         }
         catch (Exception agentException)
         {
-            if (!Win32Api.TryFindVisibleWindow(processId, windowTitle, out var window, out var error))
-                return Error($"Could not capture the selected window: {agentException.Message}. Fallback search failed: {error}");
-            try
-            {
-                var png = Win32Api.CaptureWindowByHandle((nint)window.Handle);
-                return new CallToolResult
-                {
-                    Content = [new TextContentBlock { Text = $"Captured '{window.Title}' (PID {window.ProcessId}, {window.Width}x{window.Height})." }, ImageContentBlock.FromBytes(png, "image/png")]
-                };
-            }
-            catch (Exception exception) { return Error($"Could not capture the selected window: {exception.Message}"); }
+            if (mode == CaptureMode.Wpf) return Error($"Could not capture the selected WPF window: {agentException.Message}");
+            return CaptureWindow(processId, windowTitle, includeChrome, agentException.Message);
         }
     }
 
-    [McpServerTool, Description("Clicks a point inside a visible managed-inspection window. This moves the real mouse and can change application state; require explicit user confirmation immediately before calling it.")]
-    public static CallToolResult ClickInspectionWindowPoint(
+    [McpServerTool, Description("Clicks a point inside a visible managed-inspection window. This moves the real mouse and can change application state; require explicit user confirmation immediately before calling it. If the click opens a native dialog in the inspected process, the response identifies that native/non-WPF boundary.")]
+    public static async Task<CallToolResult> ClickInspectionWindowPoint(
         [Description("PID returned by start_wpf_inspection.")] int processId,
         [Description("Horizontal pixel offset from the window's top-left; must be inside the window.")] int x,
         [Description("Vertical pixel offset from the window's top-left; must be inside the window.")] int y,
@@ -197,7 +206,8 @@ public sealed class InspectorTools
         if (!Win32Api.IsValidWindowTitleFilter(windowTitle)) return Error("windowTitle must be at most 256 characters.");
         if (!Win32Api.TryFindVisibleWindow(processId, windowTitle, out var window, out var error)) return Error(error);
         if (x < 0 || y < 0 || x >= window.Width || y >= window.Height) return Error($"The point ({x}, {y}) is outside the selected window ({window.Width}x{window.Height}).");
-        return Text(Win32Api.ClickWindowPoint((nint)window.Handle, window, x, y));
+        var response = Win32Api.ClickWindowPoint((nint)window.Handle, window, x, y);
+        return Text(await EnrichNativeDialogResponseAsync(processId, response, CancellationToken.None));
     }
 
     internal static void EndAllInspections()
@@ -213,9 +223,68 @@ public sealed class InspectorTools
             var response = await InspectionAgentClient.RequestAsync(inspection.PipeName, inspection.Secret, operation, arguments, cancellationToken);
             using var document = JsonDocument.Parse(response);
             if (document.RootElement.TryGetProperty("error", out var error)) return Error(error.GetString() ?? "The inspection agent returned an unknown error.");
+            if (operation is "interact" or "run_workflow") response = await EnrichNativeDialogResponseAsync(processId, response, cancellationToken);
             return Text(response);
         }
         catch (Exception exception) { return Error($"Could not contact the WPF inspection agent: {exception.Message}"); }
+    }
+
+    private static async Task<string> EnrichNativeDialogResponseAsync(int processId, string response, CancellationToken cancellationToken)
+    {
+        var dialogs = Win32Api.GetNativeDialogsForProcessId(processId);
+        for (var attempt = 0; dialogs.Count == 0 && attempt < 5; attempt++)
+        {
+            await Task.Delay(200, cancellationToken);
+            dialogs = Win32Api.GetNativeDialogsForProcessId(processId);
+        }
+        if (dialogs.Count == 0) return response;
+        var payload = JsonNode.Parse(response)?.AsObject() ?? throw new InvalidDataException("The inspection agent returned an invalid interaction response.");
+        payload["opened"] = true;
+        payload["awaitingChildWindow"] = true;
+        payload["nativeBoundary"] = new JsonObject
+        {
+            ["kind"] = "native/non-WPF",
+            ["strategy"] = "nativeDialogDiscovery",
+            ["dialogs"] = JsonSerializer.SerializeToNode(dialogs.Select(NativeDialogDescription))
+        };
+        return payload.ToJsonString();
+    }
+
+    private static object NativeDialogDescription(Win32Api.WindowInfo dialog) => new
+    {
+        title = dialog.Title,
+        processId = dialog.ProcessId,
+        processName = dialog.ProcessName,
+        handle = dialog.Handle,
+        className = dialog.ClassName,
+        bounds = new { x = dialog.X, y = dialog.Y, width = dialog.Width, height = dialog.Height },
+        capabilities = new[] { "userHandoff", "cancelByUser" }
+    };
+
+    private static CallToolResult CaptureWindow(int processId, string? windowTitle, bool includeChrome, string? priorFailure = null)
+    {
+        if (!Win32Api.TryFindVisibleWindow(processId, windowTitle, out var window, out var error))
+            return Error(priorFailure is null ? error : $"Could not capture the selected window through WPF: {priorFailure}. Win32 fallback search failed: {error}");
+        try
+        {
+            var png = Win32Api.CaptureWindowByHandle((nint)window.Handle, includeChrome);
+            return new CallToolResult
+            {
+                Content = [new TextContentBlock { Text = $"Captured {(includeChrome ? "screen-composited" : "top-level")} window '{window.Title}' (PID {window.ProcessId}, {window.Width}x{window.Height})." }, ImageContentBlock.FromBytes(png, "image/png")]
+            };
+        }
+        catch (Exception exception) { return Error($"Could not capture the selected top-level window: {exception.Message}"); }
+    }
+
+    private static bool TryParseCaptureMode(string? value, out CaptureMode mode)
+    {
+        switch (value?.Trim().ToLowerInvariant())
+        {
+            case null or "" or "auto": mode = CaptureMode.Auto; return true;
+            case "wpf": mode = CaptureMode.Wpf; return true;
+            case "window": mode = CaptureMode.Window; return true;
+            default: mode = default; return false;
+        }
     }
 
     private static bool TryGetInspection(int processId, out ManagedProcess inspection)
@@ -304,4 +373,5 @@ public sealed class InspectorTools
     }
 
     private sealed record ManagedProcess(Process Process, string PipeName, string Secret, bool OwnsProcess);
+    private enum CaptureMode { Auto, Wpf, Window }
 }

@@ -15,6 +15,11 @@ internal static partial class Win32Api
     private const uint MouseeventfLeftdown = 0x0002;
     private const uint MouseeventfLeftup = 0x0004;
     private const int DwmwaExtendedFrameBounds = 9;
+    private static readonly nint HwndTopmost = new(-1);
+    private static readonly nint HwndNotopmost = new(-2);
+    private const uint SwpNosize = 0x0001;
+    private const uint SwpNomove = 0x0002;
+    private const uint SwpShowwindow = 0x0040;
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetProcessDpiAwarenessContext(nint dpiFlag);
@@ -33,6 +38,9 @@ internal static partial class Win32Api
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool ShowWindow(nint hWnd, int nCmdShow);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(nint hWnd, nint hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool EnumWindows(EnumWindowsProc enumProc, nint lParam);
@@ -57,6 +65,7 @@ internal static partial class Win32Api
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool PrintWindow(nint hwnd, nint hdcBlt, uint nFlags);
+
 
     private delegate bool EnumWindowsProc(nint hWnd, nint lParam);
 
@@ -108,6 +117,12 @@ internal static partial class Win32Api
         }
         catch (ArgumentException) { return []; }
     }
+
+    internal static List<WindowInfo> GetNativeDialogsForProcessId(int processId) =>
+        GetVisibleWindowsForProcessId(processId)
+            .Where(window => string.Equals(window.ClassName, "#32770", StringComparison.Ordinal))
+            .ToList();
+
 
     private static List<WindowInfo> GetVisibleWindows(HashSet<int> processIds, string processName)
     {
@@ -162,10 +177,11 @@ internal static partial class Win32Api
         return true;
     }
 
-    internal static byte[] CaptureWindowByHandle(nint hWnd)
+    internal static byte[] CaptureWindowByHandle(nint hWnd, bool includeChrome = false)
     {
         EnsureDpiAwareness();
         ActivateWindow(hWnd, requireForeground: false);
+        if (includeChrome) return CaptureScreenCompositedWindow(hWnd);
         if (!GetWindowBounds(hWnd, out var rect)) throw new InvalidOperationException("Could not read the target window bounds.");
 
         var width = Math.Max(1, rect.Right - rect.Left);
@@ -225,6 +241,30 @@ internal static partial class Win32Api
         {
             if (disposeFinal)
                 finalBitmap.Dispose();
+        }
+    }
+
+    private static byte[] CaptureScreenCompositedWindow(nint hWnd)
+    {
+        if (!GetWindowRect(hWnd, out var rect)) throw new InvalidOperationException("Could not read the selected window bounds.");
+        var width = Math.Max(1, rect.Right - rect.Left);
+        var height = Math.Max(1, rect.Bottom - rect.Top);
+        const uint flags = SwpNosize | SwpNomove | SwpShowwindow;
+        if (!SetWindowPos(hWnd, HwndTopmost, 0, 0, 0, 0, flags))
+            throw new InvalidOperationException("Windows refused to raise the selected window for a composited capture.");
+        try
+        {
+            Thread.Sleep(100);
+            using var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+            using var graphics = Graphics.FromImage(bitmap);
+            graphics.CopyFromScreen(rect.Left, rect.Top, 0, 0, new Size(width, height), CopyPixelOperation.SourceCopy);
+            using var stream = new MemoryStream();
+            bitmap.Save(stream, ImageFormat.Png);
+            return stream.ToArray();
+        }
+        finally
+        {
+            SetWindowPos(hWnd, HwndNotopmost, 0, 0, 0, 0, flags);
         }
     }
 
