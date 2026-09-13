@@ -238,6 +238,7 @@ Started applications are closed when their session ends or when the MCP server e
 | Diagnostics | `get_wpf_element_details` · `get_wpf_bindings` · `get_wpf_interactive_elements` |
 | Interaction | `interact_with_wpf_element` · `wait_for_wpf_state` · `run_wpf_workflow` |
 | Visual validation | `take_inspection_screenshot` · `click_inspection_window_point` |
+| Native-dialog boundary | `get_native_dialogs` |
 
 ### Semantic actions
 
@@ -312,6 +313,22 @@ user-controlled prevents an agent from accidentally disclosing host paths or
 selecting an unintended file. Do not use real mouse click tools to bypass this
 safeguard without immediate user confirmation.
 
+For example, invoke the WPF command, inspect the structured boundary in its
+response, then enumerate the discoverable native dialog:
+
+```json
+{"processId":1234,"automationId":"ChooseFileButton","action":"invoke"}
+```
+
+```json
+{"processId":1234}
+```
+
+The first request is `interact_with_wpf_element`; the second is
+`get_native_dialogs`. After the user closes the dialog, call
+`get_inspection_windows`, `get_wpf_surfaces`, or `get_wpf_roots` again before
+continuing with WPF interactions.
+
 For screenshots, `take_inspection_screenshot` accepts `captureMode`: use
 `auto` (the default) to prefer WPF rendering with a Win32 fallback, `wpf` to
 require WPF rendering, or `window` to intentionally capture the selected
@@ -319,6 +336,12 @@ top-level window through Win32. The `window` mode works for visible native
 dialogs as well as WPF windows. Add `"includeChrome": true` with `window`
 mode to capture the visible, screen-composited non-client frame; this requires
 an interactive desktop and can include pixels outside the client area.
+
+For an intentional full-window capture, including the Windows chrome:
+
+```json
+{"processId":1234,"captureMode":"window","includeChrome":true}
+```
 
 ## 🛡️ Safety model
 
