@@ -294,6 +294,22 @@ intentional full inventory must explicitly include
 `"allowUnfilteredLargeResults": true`; this can substantially increase model
 context.
 
+### Native Windows dialogs
+
+WPF commands can open native Windows dialogs such as the Common Item file
+picker. These dialogs are outside the WPF visual and logical trees. When an
+interaction opens one, the MCP returns promptly with `awaitingChildWindow` and
+a `nativeBoundary` of `native/non-WPF`; call `get_native_dialogs` to obtain the
+title, process/window identity, bounds, and `userHandoff` capability.
+
+The MCP deliberately does not automate native file names, Open, or Cancel.
+Use the structured handoff to ask the local user to select a file or cancel,
+then refresh WPF roots/surfaces after it closes. This requires an interactive
+desktop session; it cannot work in a non-interactive service session. Keeping
+path entry and selection user-controlled prevents an agent from accidentally
+disclosing host paths or selecting an unintended file. Do not use real mouse
+click tools to bypass this safeguard without immediate user confirmation.
+
 ## 🛡️ Safety model
 
 - 🔒 Inspection sessions use a fresh random named-pipe name and 256-bit session secret.

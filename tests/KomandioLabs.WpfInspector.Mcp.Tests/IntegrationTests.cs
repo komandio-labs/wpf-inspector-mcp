@@ -342,17 +342,24 @@ public sealed class IntegrationTests
             var cancelModal = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "CancelModalButton", ["action"] = "invoke" });
             Assert.False(cancelModal.IsError is true, Text(cancelModal));
 
+            var modalStopwatch = Stopwatch.StartNew();
             var openShowDialog = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "OpenDialogWindowBtn", ["action"] = "invoke" });
+            modalStopwatch.Stop();
             Assert.False(openShowDialog.IsError is true, Text(openShowDialog));
+            Assert.That(modalStopwatch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(2)), Text(openShowDialog));
+            var modalInteraction = JsonNode.Parse(Text(openShowDialog))!;
+            Assert.That(modalInteraction["opened"]!.GetValue<bool>(), Is.True);
+            Assert.That(modalInteraction["awaitingChildWindow"]!.GetValue<bool>(), Is.True);
+            Assert.That(modalInteraction["childWindowDetected"]!["title"]!.GetValue<string>(), Does.Contain("Modal Test Dialog"));
             var modalWindows = await client.CallToolAsync("get_inspection_windows", new Dictionary<string, object?> { ["processId"] = processId });
             Assert.False(modalWindows.IsError is true, Text(modalWindows));
             Assert.That(Text(modalWindows), Does.Contain("Modal Test Dialog"));
             var modalRoots = await client.CallToolAsync("get_wpf_roots", new Dictionary<string, object?> { ["processId"] = processId });
             Assert.False(modalRoots.IsError is true, Text(modalRoots));
             Assert.That(Text(modalRoots), Does.Contain("Modal Test Dialog"));
-            var closeModalDialog = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "CloseModalDialogBtn", ["action"] = "invoke" });
-            Assert.False(closeModalDialog.IsError is true, Text(closeModalDialog));
-            var modalDialogDismissed = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "StatusLabel", ["condition"] = "textEquals", ["expectedValue"] = "Status: Modal Dialog Confirmed", ["timeoutMs"] = 3000 });
+            var cancelModalDialog = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "CancelModalDialogBtn", ["action"] = "invoke" });
+            Assert.False(cancelModalDialog.IsError is true, Text(cancelModalDialog));
+            var modalDialogDismissed = await client.CallToolAsync("wait_for_wpf_state", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "StatusLabel", ["condition"] = "textEquals", ["expectedValue"] = "Status: Modal Dialog Dismissed", ["timeoutMs"] = 3000 });
             Assert.False(modalDialogDismissed.IsError is true, Text(modalDialogDismissed));
 
             var openDrawer = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "OpenDrawerBtn", ["action"] = "invoke" });
@@ -417,6 +424,15 @@ public sealed class IntegrationTests
             Assert.True(invalidTarget.IsError is true);
             var invalidClick = await client.CallToolAsync("click_inspection_window_point", new Dictionary<string, object?> { ["processId"] = processId, ["x"] = -1, ["y"] = 0 });
             Assert.True(invalidClick.IsError is true);
+
+            var openNativePicker = await client.CallToolAsync("interact_with_wpf_element", new Dictionary<string, object?> { ["processId"] = processId, ["automationId"] = "OpenNativeFilePickerButton", ["action"] = "invoke" });
+            Assert.False(openNativePicker.IsError is true, Text(openNativePicker));
+            var nativePickerInteraction = JsonNode.Parse(Text(openNativePicker))!;
+            Assert.That(nativePickerInteraction["awaitingChildWindow"]!.GetValue<bool>(), Is.True);
+            Assert.That(nativePickerInteraction["nativeBoundary"]!["kind"]!.GetValue<string>(), Is.EqualTo("native/non-WPF"));
+            var nativeDialogs = await client.CallToolAsync("get_native_dialogs", new Dictionary<string, object?> { ["processId"] = processId });
+            Assert.False(nativeDialogs.IsError is true, Text(nativeDialogs));
+            Assert.That(Text(nativeDialogs), Does.Contain("Choose sample ZIP"));
 
             var end = await client.CallToolAsync("end_wpf_inspection", new Dictionary<string, object?> { ["processId"] = processId });
             Assert.False(end.IsError is true, Text(end));

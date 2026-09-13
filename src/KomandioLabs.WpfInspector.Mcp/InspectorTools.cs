@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -67,6 +68,17 @@ public sealed class InspectorTools
     {
         if (!TryGetInspection(processId, out _)) return Error("This MCP server does not manage that inspection process.");
         return Text(Win32Api.SerializeWindows(Win32Api.GetVisibleWindowsForProcessId(processId)));
+    }
+
+    [McpServerTool, Description("Lists visible native Windows Common Item Dialogs owned by a managed inspection process. Native dialogs are outside the WPF trees; this tool is read-only and supports a structured user handoff rather than file selection automation.")]
+    public static CallToolResult GetNativeDialogs([Description("PID returned by start_wpf_inspection.")] int processId)
+    {
+        if (!TryGetInspection(processId, out _)) return Error("This MCP server does not manage that inspection process.");
+        return Text(JsonSerializer.Serialize(new
+        {
+            boundary = "native/non-WPF",
+            dialogs = Win32Api.GetNativeDialogsForProcessId(processId).Select(NativeDialogDescription)
+        }));
     }
 
     [McpServerTool, Description("Returns the live WPF window roots for one managed AI-inspection session.")]
@@ -213,10 +225,43 @@ public sealed class InspectorTools
             var response = await InspectionAgentClient.RequestAsync(inspection.PipeName, inspection.Secret, operation, arguments, cancellationToken);
             using var document = JsonDocument.Parse(response);
             if (document.RootElement.TryGetProperty("error", out var error)) return Error(error.GetString() ?? "The inspection agent returned an unknown error.");
+            if (operation == "interact") response = await EnrichInteractionWithNativeDialogAsync(processId, response, cancellationToken);
             return Text(response);
         }
         catch (Exception exception) { return Error($"Could not contact the WPF inspection agent: {exception.Message}"); }
     }
+
+    private static async Task<string> EnrichInteractionWithNativeDialogAsync(int processId, string response, CancellationToken cancellationToken)
+    {
+        var dialogs = Win32Api.GetNativeDialogsForProcessId(processId);
+        if (dialogs.Count == 0)
+        {
+            await Task.Delay(200, cancellationToken);
+            dialogs = Win32Api.GetNativeDialogsForProcessId(processId);
+        }
+        if (dialogs.Count == 0) return response;
+        var payload = JsonNode.Parse(response)?.AsObject() ?? throw new InvalidDataException("The inspection agent returned an invalid interaction response.");
+        payload["opened"] = true;
+        payload["awaitingChildWindow"] = true;
+        payload["nativeBoundary"] = new JsonObject
+        {
+            ["kind"] = "native/non-WPF",
+            ["strategy"] = "userHandoff",
+            ["dialogs"] = JsonSerializer.SerializeToNode(dialogs.Select(NativeDialogDescription))
+        };
+        return payload.ToJsonString();
+    }
+
+    private static object NativeDialogDescription(Win32Api.WindowInfo dialog) => new
+    {
+        title = dialog.Title,
+        processId = dialog.ProcessId,
+        processName = dialog.ProcessName,
+        handle = dialog.Handle,
+        className = dialog.ClassName,
+        bounds = new { x = dialog.X, y = dialog.Y, width = dialog.Width, height = dialog.Height },
+        capabilities = new[] { "userHandoff", "cancelByUser" }
+    };
 
     private static bool TryGetInspection(int processId, out ManagedProcess inspection)
     {

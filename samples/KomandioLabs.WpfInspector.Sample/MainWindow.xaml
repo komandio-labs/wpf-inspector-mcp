@@ -189,6 +189,7 @@
                         <CheckBox x:Name="VisualLoggingCheck" AutomationProperties.AutomationId="VisualLoggingCheck" Content="Enable Advanced Visual Tree Logging" IsChecked="True" Margin="0,0,0,12"/>
                         <CheckBox x:Name="HardwareAccelerationCheck" AutomationProperties.AutomationId="HardwareAccelerationCheck" Content="Hardware Acceleration Enabled" IsChecked="True" Margin="0,0,0,16"/>
                         <ui:Button x:Name="SaveSettingsButton" AutomationProperties.AutomationId="SaveSettingsButton" Content="Save Settings" Appearance="Primary" Height="36" Width="140" HorizontalAlignment="Left" Click="SaveSettings_Click"/>
+                        <Button x:Name="OpenNativeFilePickerButton" AutomationProperties.AutomationId="OpenNativeFilePickerButton" Content="Open Native File Picker" Height="32" Width="180" HorizontalAlignment="Left" Margin="0,8,0,0" Click="OpenNativeFilePicker_Click"/>
                         <Separator Margin="0,20,0,16"/>
                         <TextBlock Text="Inspector Control Laboratory" FontSize="16" FontWeight="Bold" Margin="0,0,0,12"/>
                         <TextBox x:Name="NameInput" AutomationProperties.AutomationId="NameInput" Text="Ada Lovelace" Margin="0,0,0,8"/>

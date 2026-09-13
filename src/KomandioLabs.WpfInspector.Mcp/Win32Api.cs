@@ -109,6 +109,11 @@ internal static partial class Win32Api
         catch (ArgumentException) { return []; }
     }
 
+    internal static List<WindowInfo> GetNativeDialogsForProcessId(int processId) =>
+        GetVisibleWindowsForProcessId(processId)
+            .Where(window => string.Equals(window.ClassName, "#32770", StringComparison.Ordinal))
+            .ToList();
+
     private static List<WindowInfo> GetVisibleWindows(HashSet<int> processIds, string processName)
     {
         if (processIds.Count == 0)

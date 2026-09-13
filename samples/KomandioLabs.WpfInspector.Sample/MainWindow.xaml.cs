@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
+using Microsoft.Win32;
 using Wpf.Ui.Controls;
 
 namespace KomandioLabs.WpfInspector.Sample;
@@ -86,6 +87,18 @@ public partial class MainWindow : FluentWindow
 
     private void SaveSettings_Click(object sender, RoutedEventArgs e) => StatusLabel.Text = "Status: Settings Saved";
 
+    private void OpenNativeFilePicker_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Choose sample ZIP",
+            Filter = "ZIP files (*.zip)|*.zip|All files (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+        StatusLabel.Text = dialog.ShowDialog(this) == true ? "Status: Native file selected" : "Status: Native file picker cancelled";
+    }
+
     private void OpenModal_Click(object sender, RoutedEventArgs e)
     {
         TestModalOverlay.Visibility = Visibility.Visible;
@@ -122,13 +135,23 @@ public partial class MainWindow : FluentWindow
                         Name = "CloseModalDialogBtn",
                         Content = "Close Dialog",
                         Height = 32
+                    },
+                    new System.Windows.Controls.Button
+                    {
+                        Name = "CancelModalDialogBtn",
+                        Content = "Cancel Dialog",
+                        Height = 32,
+                        Margin = new Thickness(0, 8, 0, 0)
                     }
                 }
             }
         };
         var closeBtn = (System.Windows.Controls.Button)((StackPanel)dialog.Content).Children[1];
+        var cancelBtn = (System.Windows.Controls.Button)((StackPanel)dialog.Content).Children[2];
         System.Windows.Automation.AutomationProperties.SetAutomationId(closeBtn, "CloseModalDialogBtn");
+        System.Windows.Automation.AutomationProperties.SetAutomationId(cancelBtn, "CancelModalDialogBtn");
         closeBtn.Click += (_, _) => { dialog.DialogResult = true; dialog.Close(); };
+        cancelBtn.Click += (_, _) => dialog.Close();
         var result = dialog.ShowDialog();
         StatusLabel.Text = result == true ? "Status: Modal Dialog Confirmed" : "Status: Modal Dialog Dismissed";
     }
