@@ -1,4 +1,4 @@
-# 🔎 Komandio Labs WPF Inspector MCP
+# 🔎 WPF Inspector MCP
 
 [![Support Komandio Labs on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/komandiolabs)
 
